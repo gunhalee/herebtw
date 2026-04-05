@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { PageShell } from "../common/page-shell";
 import { ensureRegisteredBrowserDevice } from "../../lib/device/browser-device";
+import { getCurrentBrowserCoordinates } from "../../lib/geo/browser-location";
 import {
   uiColors,
   uiRadius,
@@ -14,15 +15,15 @@ import type { ApiResponse } from "../../types/api";
 import type { PostComposeState } from "../../types/post";
 import { PostComposeForm } from "./post-compose-form";
 
-const DEFAULT_LOCATION = {
-  latitude: 37.4979,
-  longitude: 127.0276,
+type ResolvedLocation = {
+  latitude: number;
+  longitude: number;
+  administrativeDongName: string;
+  administrativeDongCode: string;
 };
 
-const DEFAULT_REGION = {
-  administrativeDongName: "역삼1동",
-  administrativeDongCode: "11680640",
-  gridCellPath: "nation.seoul.gangnam.yeoksam1",
+type ResolveLocationResponse = {
+  location: ResolvedLocation;
 };
 
 function createInitialComposeState(): PostComposeState {
@@ -30,14 +31,34 @@ function createInitialComposeState(): PostComposeState {
     content: "",
     charCount: 0,
     submitting: false,
-    locationResolved: true,
-    resolvedDongName: DEFAULT_REGION.administrativeDongName,
-    resolvedDongCode: DEFAULT_REGION.administrativeDongCode,
-    resolvedGridCellPath: DEFAULT_REGION.gridCellPath,
+    locationResolved: false,
+    resolvedDongName: null,
+    resolvedDongCode: null,
+    resolvedGridCellPath: null,
     cooldownRemainingSeconds: 0,
     duplicateBlocked: false,
     errorMessage: null,
   };
+}
+
+function getLocationErrorMessage(error: unknown) {
+  if (!(error instanceof Error)) {
+    return "현재 위치를 확인하지 못했어요. 잠시 후 다시 시도해 주세요.";
+  }
+
+  if (error.message === "GEOLOCATION_PERMISSION_DENIED") {
+    return "브라우저 위치 권한을 허용하면 이 동네에 글을 남길 수 있어요.";
+  }
+
+  if (error.message === "GEOLOCATION_TIMEOUT") {
+    return "위치 확인 시간이 초과됐어요. 잠시 후 다시 시도해 주세요.";
+  }
+
+  if (error.message === "GEOLOCATION_UNAVAILABLE") {
+    return "이 브라우저에서는 위치 확인을 사용할 수 없어요.";
+  }
+
+  return "현재 위치를 확인하지 못했어요. 잠시 후 다시 시도해 주세요.";
 }
 
 type WriteScreenProps = {
@@ -47,6 +68,74 @@ type WriteScreenProps = {
 export function WriteScreen({ dataSourceMode }: WriteScreenProps) {
   const router = useRouter();
   const [composeState, setComposeState] = useState(createInitialComposeState);
+  const [resolvedLocation, setResolvedLocation] = useState<ResolvedLocation | null>(
+    null,
+  );
+  const [locationStatusText, setLocationStatusText] = useState<string | null>(
+    "현재 위치를 확인하는 중이에요.",
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function resolveLocation() {
+      try {
+        const coordinates = await getCurrentBrowserCoordinates();
+        const response = await fetch("/api/location/resolve", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            location: coordinates,
+          }),
+        });
+        const json = (await response.json()) as ApiResponse<ResolveLocationResponse>;
+
+        if (!response.ok || !json.success || !json.data) {
+          throw new Error(
+            json.error?.message ?? "현재 위치를 확인하지 못했어요.",
+          );
+        }
+
+        if (cancelled) {
+          return;
+        }
+
+        const nextLocation = json.data.location;
+        setResolvedLocation(nextLocation);
+        setLocationStatusText(null);
+        setComposeState((current) => ({
+          ...current,
+          locationResolved: true,
+          resolvedDongName: nextLocation.administrativeDongName,
+          resolvedDongCode: nextLocation.administrativeDongCode,
+          resolvedGridCellPath: null,
+          errorMessage: null,
+        }));
+      } catch (error) {
+        if (cancelled) {
+          return;
+        }
+
+        setResolvedLocation(null);
+        setLocationStatusText(getLocationErrorMessage(error));
+        setComposeState((current) => ({
+          ...current,
+          locationResolved: false,
+          resolvedDongName: null,
+          resolvedDongCode: null,
+          resolvedGridCellPath: null,
+        }));
+      }
+    }
+
+    void resolveLocation();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   function handleChangeContent(value: string) {
     setComposeState((current) => ({
@@ -65,7 +154,16 @@ export function WriteScreen({ dataSourceMode }: WriteScreenProps) {
       setComposeState((current) => ({
         ...current,
         errorMessage:
-          "Supabase 환경변수를 먼저 설정해야 실제로 글을 저장할 수 있어요.",
+          "Supabase 환경변수를 먼저 설정해야 실제로 글을 등록할 수 있어요.",
+      }));
+      return;
+    }
+
+    if (!resolvedLocation) {
+      setComposeState((current) => ({
+        ...current,
+        errorMessage:
+          "현재 위치를 확인해야 글을 등록할 수 있어요. 위치 권한을 확인해 주세요.",
       }));
       return;
     }
@@ -86,16 +184,13 @@ export function WriteScreen({ dataSourceMode }: WriteScreenProps) {
         body: JSON.stringify({
           anonymousDeviceId,
           content: composeState.content,
-          location: DEFAULT_LOCATION,
+          location: {
+            latitude: resolvedLocation.latitude,
+            longitude: resolvedLocation.longitude,
+          },
           clientResolved: {
-            administrativeDongName:
-              composeState.resolvedDongName ??
-              DEFAULT_REGION.administrativeDongName,
-            administrativeDongCode:
-              composeState.resolvedDongCode ??
-              DEFAULT_REGION.administrativeDongCode,
-            gridCellPath:
-              composeState.resolvedGridCellPath ?? DEFAULT_REGION.gridCellPath,
+            administrativeDongName: resolvedLocation.administrativeDongName,
+            administrativeDongCode: resolvedLocation.administrativeDongCode,
           },
         }),
       });
@@ -143,7 +238,7 @@ export function WriteScreen({ dataSourceMode }: WriteScreenProps) {
             margin: 0,
           }}
         >
-          여기 근데 남기기
+          여기 근데 올리기
         </h1>
 
         <p
@@ -153,13 +248,12 @@ export function WriteScreen({ dataSourceMode }: WriteScreenProps) {
             margin: 0,
           }}
         >
-          지금 있는 위치에서 느낀 문제나 좋은 점을 100자 안으로 적어 주세요.
+          지금 있는 위치에서 느낀 문제나 좋았던 점을 100자 안으로 남겨 주세요.
         </p>
 
         <div
           style={{
-            background:
-              dataSourceMode === "supabase" ? "#eff6ff" : "#fff7ed",
+            background: dataSourceMode === "supabase" ? "#eff6ff" : "#fff7ed",
             border: `1px solid ${
               dataSourceMode === "supabase" ? "#93c5fd" : "#fdba74"
             }`,
@@ -172,13 +266,14 @@ export function WriteScreen({ dataSourceMode }: WriteScreenProps) {
           }}
         >
           {dataSourceMode === "supabase"
-            ? "Supabase 저장 모드입니다. 등록 후 홈 피드에서 바로 확인할 수 있어요."
-            : "샘플 모드입니다. Supabase 환경변수를 넣기 전에는 글이 실제로 저장되지 않아요."}
+            ? "위치를 실제로 확인한 뒤 가까운 피드에 글이 올라가요."
+            : "샘플 모드예요. Supabase 환경변수를 연결해야 글이 실제로 저장돼요."}
         </div>
       </header>
 
       <PostComposeForm
         {...composeState}
+        locationStatusText={locationStatusText}
         onChangeContent={handleChangeContent}
         onSubmit={handleSubmit}
         submitDisabled={dataSourceMode !== "supabase"}
@@ -202,7 +297,7 @@ export function WriteScreen({ dataSourceMode }: WriteScreenProps) {
             margin: 0,
           }}
         >
-          현재 MVP에서는 위치 해석을 기본 동네 값으로 연결해 두었습니다.
+          이제 글 등록은 브라우저 위치와 서버 위치 해석 결과를 같이 사용합니다.
         </p>
         <p
           style={{
@@ -212,8 +307,8 @@ export function WriteScreen({ dataSourceMode }: WriteScreenProps) {
             margin: 0,
           }}
         >
-          실제 역지오코딩과 지도 연동은 다음 단계에서 붙이면 되고, 지금은
-          Supabase 저장과 홈 피드 반영 흐름을 먼저 검증할 수 있어요.
+          위치 권한이 없으면 작성할 수 없고, 서버에서 현재 좌표를 다시 확인해
+          동 이름과 좌표를 함께 저장해요.
         </p>
       </section>
     </PageShell>

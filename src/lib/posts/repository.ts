@@ -1,6 +1,11 @@
 import type { AppShellState } from "../../types/device";
 import type { GridCellSummary } from "../../types/grid";
-import type { PostComposeState, PostDetailState, PostListState } from "../../types/post";
+import type {
+  PostComposeState,
+  PostDetailState,
+  PostListState,
+  PostLocation,
+} from "../../types/post";
 import { getSupabaseServerClient } from "../supabase/server";
 import {
   supabaseDelete,
@@ -9,7 +14,6 @@ import {
   supabaseSelect,
   supabaseUpsert,
 } from "../supabase/rest";
-import { makeOpaqueCursor } from "../utils/cursor";
 import { formatRelativeTime } from "../utils/datetime";
 import { hydrateGridCells } from "../geo/region-metadata";
 import {
@@ -61,22 +65,55 @@ type PostRow = {
   content: string;
   administrative_dong_name: string;
   author_device_id?: string;
-  grid_cell_path?: string;
+  latitude?: number | null;
+  longitude?: number | null;
   created_at: string;
   delete_expires_at: string;
 };
 
-function estimateDistanceMeters(post: Pick<PostRow, "grid_cell_path" | "administrative_dong_name">, index: number) {
-  const seedByPath: Record<string, number> = {
-    "nation.seoul.gangnam.yeoksam1": 280,
-    "nation.seoul.gangnam.yeoksam2": 610,
-    "nation.seoul.gangnam.nonhyeon1": 820,
-    "nation.seoul.mapo.seogyo": 1240,
-    "nation.seoul.mapo.yeonnam": 1580,
-    "nation.incheon.yeonsu.songdo1": 2350,
-  };
+function toRadians(value: number) {
+  return (value * Math.PI) / 180;
+}
 
-  return seedByPath[post.grid_cell_path ?? ""] ?? 420 + index * 180;
+function hasStoredCoordinates(post: Pick<PostRow, "latitude" | "longitude">) {
+  return (
+    typeof post.latitude === "number" &&
+    Number.isFinite(post.latitude) &&
+    typeof post.longitude === "number" &&
+    Number.isFinite(post.longitude)
+  );
+}
+
+function calculateDistanceMeters(from: PostLocation, to: PostLocation) {
+  const earthRadiusMeters = 6371000;
+  const latitudeDelta = toRadians(to.latitude - from.latitude);
+  const longitudeDelta = toRadians(to.longitude - from.longitude);
+  const fromLatitude = toRadians(from.latitude);
+  const toLatitude = toRadians(to.latitude);
+
+  const haversine =
+    Math.sin(latitudeDelta / 2) ** 2 +
+    Math.cos(fromLatitude) *
+      Math.cos(toLatitude) *
+      Math.sin(longitudeDelta / 2) ** 2;
+
+  return Math.round(
+    2 * earthRadiusMeters * Math.atan2(Math.sqrt(haversine), Math.sqrt(1 - haversine)),
+  );
+}
+
+function estimateDistanceMeters(
+  post: Pick<PostRow, "latitude" | "longitude">,
+  viewerLocation?: PostLocation,
+) {
+  if (!viewerLocation || !hasStoredCoordinates(post)) {
+    return Number.MAX_SAFE_INTEGER;
+  }
+
+  return calculateDistanceMeters(viewerLocation, {
+    latitude: post.latitude!,
+    longitude: post.longitude!,
+  });
 }
 
 type PostEngagementRow = {
@@ -90,6 +127,12 @@ type ReactionRow = {
   device_id: string;
   reaction_type: string;
 };
+
+function isUuid(value: string) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+    value,
+  );
+}
 
 async function ensureDeviceIdentity(anonymousDeviceId: string) {
   const rows = await supabaseUpsert<DeviceIdentityRow[]>(
@@ -134,20 +177,11 @@ export async function loadGridSummaryRepository(input: {
     }));
   }
 
-  return Promise.all(
-    input.gridCellPaths.map(async (gridCellPath) => {
-      const rows = await supabaseSelect<PostRow[]>(
-        `posts?select=id&status=eq.active&grid_cell_path=like.${gridCellPath}*`,
-      );
-      const activePostCount = rows?.length ?? 0;
-
-      return {
-        gridCellPath,
-        activePostCount,
-        colorLevel: getColorLevel(activePostCount),
-      };
-    }),
-  );
+  return input.gridCellPaths.map((gridCellPath) => ({
+    gridCellPath,
+    activePostCount: 0,
+    colorLevel: 0,
+  }));
 }
 
 export async function loadRegionGridRepository(
@@ -164,6 +198,7 @@ export async function loadRegionGridRepository(
 export async function loadPostsListRepository(input: {
   anonymousDeviceId?: string;
   limit?: number;
+  location?: PostLocation;
 }) {
   const supabase = getSupabaseServerClient();
 
@@ -176,10 +211,9 @@ export async function loadPostsListRepository(input: {
     : null;
   const limit = input.limit ?? 10;
   const query = [
-    "select=id,content,administrative_dong_name,created_at,delete_expires_at,grid_cell_path",
+    "select=id,content,administrative_dong_name,created_at,delete_expires_at,latitude,longitude",
     "status=eq.active",
     "order=created_at.desc",
-    `limit=${limit}`,
   ];
 
   const posts = (await supabaseSelect<PostRow[]>(`posts?${query.join("&")}`)) ?? [];
@@ -204,12 +238,25 @@ export async function loadPostsListRepository(input: {
   );
   const myReactionSet = new Set(myReactionRows.map((row) => row.post_id));
 
-  const items = posts
-    .map((post, index) => ({
+  const sortedPosts = [...posts].sort((left, right) => {
+    const leftDistance = estimateDistanceMeters(left, input.location);
+    const rightDistance = estimateDistanceMeters(right, input.location);
+
+    if (leftDistance !== rightDistance) {
+      return leftDistance - rightDistance;
+    }
+
+    return new Date(right.created_at).getTime() - new Date(left.created_at).getTime();
+  });
+
+  const selectedPosts = sortedPosts.slice(0, limit);
+
+  const items = selectedPosts
+    .map((post) => ({
       id: post.id,
       content: post.content,
       administrativeDongName: post.administrative_dong_name,
-      distanceMeters: estimateDistanceMeters(post, index),
+      distanceMeters: estimateDistanceMeters(post, input.location),
       relativeTime: formatRelativeTime(post.created_at),
       agreeCount: engagementMap.get(post.id) ?? 0,
       myAgree: myReactionSet.has(post.id),
@@ -224,16 +271,9 @@ export async function loadPostsListRepository(input: {
       return 0;
     });
 
-  const lastPost = posts[posts.length - 1];
-
   return {
     items,
-    nextCursor: lastPost
-      ? makeOpaqueCursor({
-          createdAt: lastPost.created_at,
-          id: lastPost.id,
-        })
-      : null,
+    nextCursor: null,
     loading: false,
     loadingMore: false,
     empty: items.length === 0,
@@ -253,12 +293,16 @@ export async function loadPostDetailRepository(input: {
     return input.postId === mock.postId ? mock : null;
   }
 
+  if (!isUuid(input.postId)) {
+    return null;
+  }
+
   const device = input.anonymousDeviceId
     ? await ensureDeviceIdentity(input.anonymousDeviceId)
     : null;
   const postRows =
     (await supabaseSelect<PostRow[]>(
-      `posts?select=id,content,administrative_dong_name,created_at,delete_expires_at,author_device_id&status=eq.active&id=eq.${input.postId}&limit=1`,
+      `posts?select=id,content,administrative_dong_name,created_at,delete_expires_at,author_device_id,latitude,longitude&status=eq.active&id=eq.${input.postId}&limit=1`,
     )) ?? [];
   const post = postRows[0];
 
@@ -290,7 +334,7 @@ export async function loadPostDetailRepository(input: {
     loading: false,
     content: post.content,
     administrativeDongName: post.administrative_dong_name,
-    distanceMeters: estimateDistanceMeters(post, 0),
+    distanceMeters: 0,
     relativeTime: formatRelativeTime(post.created_at),
     agreeCount: Number(engagementRows[0]?.agree_count ?? 0),
     myAgree: myReactionRows.length > 0,
@@ -324,6 +368,7 @@ export async function syncDeviceRepository(anonymousDeviceId: string) {
 
 export async function createPostRepository(
   state: PostComposeState,
+  location: PostLocation,
   anonymousDeviceId?: string,
 ) {
   const supabase = getSupabaseServerClient();
@@ -348,7 +393,8 @@ export async function createPostRepository(
       content: state.content.trim(),
       administrative_dong_name: state.resolvedDongName,
       administrative_dong_code: state.resolvedDongCode,
-      grid_cell_path: state.resolvedGridCellPath,
+      latitude: location.latitude,
+      longitude: location.longitude,
     },
   );
 

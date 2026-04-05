@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { DongPostsScreen } from "./dong-posts-screen";
 import { ensureRegisteredBrowserDevice } from "../../lib/device/browser-device";
+import { getCurrentBrowserCoordinates } from "../../lib/geo/browser-location";
 import type { ApiResponse } from "../../types/api";
 import type { AppShellState } from "../../types/device";
 import type { PostListState } from "../../types/post";
@@ -12,6 +13,20 @@ type PostsListResponse = {
   items: PostListState["items"];
   nextCursor: string | null;
 };
+
+type ResolveLocationResponse = {
+  location: {
+    administrativeDongName: string;
+    administrativeDongCode: string;
+  };
+};
+
+function getPermissionMode(error: unknown): AppShellState["permissionMode"] {
+  return error instanceof Error &&
+    error.message === "GEOLOCATION_PERMISSION_DENIED"
+    ? "denied"
+    : "unknown";
+}
 
 export type HomeScreenProps = {
   dataSourceMode: "supabase" | "mock";
@@ -32,13 +47,44 @@ export function HomeScreen({
   const [reportSubmitting, setReportSubmitting] = useState(false);
 
   const currentDongName =
-    postListState.items[0]?.administrativeDongName ??
     appShellState.selectedDongName ??
+    postListState.items[0]?.administrativeDongName ??
     "우리 동네";
   const runtimeNotice =
     dataSourceMode === "mock"
       ? "Supabase 환경변수가 아직 설정되지 않아 샘플 데이터를 보여주고 있어요."
       : null;
+
+  async function fetchPostsList(
+    anonymousDeviceId: string,
+    location?: {
+      latitude: number;
+      longitude: number;
+    },
+  ) {
+    const response = await fetch("/api/posts/list", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        anonymousDeviceId,
+        location,
+        pagination: {
+          limit: 10,
+        },
+      }),
+    });
+    const json = (await response.json()) as ApiResponse<PostsListResponse>;
+
+    if (!response.ok || !json.success || !json.data) {
+      throw new Error(
+        json.error?.message ?? "동네 글을 불러오지 못했습니다.",
+      );
+    }
+
+    return json.data;
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -57,31 +103,62 @@ export function HomeScreen({
           deviceReady: true,
         }));
 
+        async function bootstrapLocation() {
+          const coordinates = await getCurrentBrowserCoordinates();
+          const locationResponse = await fetch("/api/location/resolve", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              location: coordinates,
+            }),
+          });
+          const locationJson =
+            (await locationResponse.json()) as ApiResponse<ResolveLocationResponse>;
+
+          if (
+            locationResponse.ok &&
+            locationJson.success &&
+            locationJson.data &&
+            !cancelled
+          ) {
+            const resolvedLocation = locationJson.data.location;
+
+            setAppShellState((current) => ({
+              ...current,
+              permissionMode: "granted",
+              selectedDongCode: resolvedLocation.administrativeDongCode,
+              selectedDongName: resolvedLocation.administrativeDongName,
+            }));
+          }
+
+          return coordinates;
+        }
+
+        let resolvedCoordinates:
+          | {
+              latitude: number;
+              longitude: number;
+            }
+          | undefined;
+
+        try {
+          resolvedCoordinates = await bootstrapLocation();
+        } catch (error) {
+          if (!cancelled) {
+            setAppShellState((current) => ({
+              ...current,
+              permissionMode: getPermissionMode(error),
+            }));
+          }
+        }
+
         if (dataSourceMode !== "supabase") {
           return;
         }
 
-        const response = await fetch("/api/posts/list", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            anonymousDeviceId,
-            pagination: {
-              limit: 10,
-            },
-          }),
-        });
-        const json = (await response.json()) as ApiResponse<PostsListResponse>;
-
-        if (!response.ok || !json.success || !json.data) {
-          throw new Error(
-            json.error?.message ?? "동네 글을 불러오지 못했습니다.",
-          );
-        }
-
-        const data = json.data;
+        const data = await fetchPostsList(anonymousDeviceId, resolvedCoordinates);
 
         if (cancelled) {
           return;

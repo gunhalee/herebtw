@@ -1,5 +1,9 @@
 import { createPostAction } from "../../../actions/posts/create-post";
 import { fail, ok } from "../../../lib/api/response";
+import {
+  isValidCoordinateInput,
+  resolveLocationFromCoordinates,
+} from "../../../lib/geo/resolve-location";
 import type { PostComposeState } from "../../../types/post";
 
 type CreatePostRequest = {
@@ -12,7 +16,6 @@ type CreatePostRequest = {
   clientResolved?: {
     administrativeDongName: string;
     administrativeDongCode: string;
-    gridCellPath: string;
   };
 };
 
@@ -29,22 +32,48 @@ export async function POST(request: Request) {
     );
   }
 
+  if (!isValidCoordinateInput(body.location)) {
+    return fail(
+      {
+        code: "INVALID_LOCATION",
+        message: "유효한 위치 좌표가 필요해요.",
+      },
+      400,
+    );
+  }
+
+  let resolvedLocation;
+
+  try {
+    resolvedLocation = await resolveLocationFromCoordinates(body.location);
+  } catch {
+    return fail(
+      {
+        code: "LOCATION_RESOLUTION_FAILED",
+        message: "현재 위치를 확인하지 못했어요.",
+      },
+      502,
+    );
+  }
+
   const composeState: PostComposeState = {
     content: body.content,
     charCount: body.content.trim().length,
     submitting: false,
     locationResolved: true,
-    resolvedDongName: body.clientResolved?.administrativeDongName ?? "역삼1동",
-    resolvedDongCode: body.clientResolved?.administrativeDongCode ?? "11680640",
-    resolvedGridCellPath:
-      body.clientResolved?.gridCellPath ??
-      "nation.seoul.gangnam.yeoksam1",
+    resolvedDongName: resolvedLocation.administrativeDongName,
+    resolvedDongCode: resolvedLocation.administrativeDongCode,
+    resolvedGridCellPath: null,
     cooldownRemainingSeconds: 0,
     duplicateBlocked: false,
     errorMessage: null,
   };
 
-  const result = await createPostAction(composeState, body.anonymousDeviceId);
+  const result = await createPostAction(
+    composeState,
+    body.location,
+    body.anonymousDeviceId,
+  );
 
   if (!result.ok || !result.detailState) {
     return fail(

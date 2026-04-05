@@ -14,11 +14,20 @@ export function getSupabaseBrowserKey(): string | null {
   );
 }
 
+/** Secret (sb_secret_...), legacy service_role JWT, or env fallback. */
+export function getSupabaseServerKey(): string | null {
+  return (
+    process.env.SUPABASE_SECRET_KEY ??
+    process.env.SUPABASE_SERVICE_ROLE_KEY ??
+    null
+  );
+}
+
 export function getSupabaseConfig(): SupabaseRuntimeConfig {
   return {
     url: process.env.NEXT_PUBLIC_SUPABASE_URL ?? null,
     anonKey: getSupabaseBrowserKey(),
-    serviceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY ?? null,
+    serviceRoleKey: getSupabaseServerKey(),
   };
 }
 

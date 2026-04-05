@@ -32,12 +32,15 @@ export async function getHomePageState(): Promise<{
   const postListState = await loadPostsListRepository({
     limit: 10,
   });
-  const fallbackPostId = postListState.items[0]?.id ?? "post_1";
-  const fallbackDetail = getMockPostDetailState(fallbackPostId);
-  const postDetailState =
-    (await loadPostDetailRepository({
-      postId: fallbackPostId,
-    })) ?? fallbackDetail;
+  const firstPostId = postListState.items[0]?.id ?? null;
+  const fallbackDetail = firstPostId
+    ? getMockPostDetailState(firstPostId)
+    : getMockPostDetailState();
+  const postDetailState = firstPostId
+    ? (await loadPostDetailRepository({
+        postId: firstPostId,
+      })) ?? fallbackDetail
+    : fallbackDetail;
 
   const serializedPostListState: PostListState = {
     ...postListState,

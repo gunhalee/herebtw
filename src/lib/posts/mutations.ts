@@ -1,4 +1,4 @@
-import type { PostComposeState, PostDetailState } from "../../types/post";
+import type { PostComposeState, PostDetailState, PostLocation } from "../../types/post";
 import { logAbuseEvent } from "../abuse/log-event";
 import { checkDuplicateContent } from "../abuse/duplicate-check";
 import { getWriteCooldownState } from "../abuse/rate-limit";
@@ -13,6 +13,7 @@ const DUPLICATE_SEED_CONTENTS: string[] = [];
 
 export async function createPostDraft(
   state: PostComposeState,
+  location: PostLocation,
   anonymousDeviceId?: string,
 ): Promise<{
   ok: boolean;
@@ -69,7 +70,11 @@ export async function createPostDraft(
     };
   }
 
-  const repositoryResult = await createPostRepository(state, anonymousDeviceId);
+  const repositoryResult = await createPostRepository(
+    state,
+    location,
+    anonymousDeviceId,
+  );
 
   return {
     ok: true,

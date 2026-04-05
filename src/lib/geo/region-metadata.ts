@@ -10,7 +10,7 @@ export type RegionCellMetadata = Pick<
   parentPath: string | null;
 };
 
-type RegionNode = {
+export type RegionNode = {
   path: string;
   label: string;
   level: GridLevel;
@@ -67,6 +67,17 @@ const REGION_NODES: RegionNode[] = [
 ];
 
 const NODE_BY_PATH = new Map(REGION_NODES.map((node) => [node.path, node]));
+const NODE_BY_DONG_CODE = new Map(
+  REGION_NODES.flatMap((node) =>
+    node.dongCode ? [[node.dongCode, node] as const] : [],
+  ),
+);
+const NODE_BY_DONG_NAME = new Map(
+  REGION_NODES.filter((node) => node.level === "dong").map((node) => [
+    node.label,
+    node,
+  ]),
+);
 
 const NEXT_LEVEL_BY_LEVEL: Record<GridLevel, GridLevel | null> = {
   nation: "sido",
@@ -85,6 +96,22 @@ export function getRegionNode(path: string | null | undefined) {
   }
 
   return NODE_BY_PATH.get(path) ?? null;
+}
+
+export function findRegionNodeByDongCode(dongCode: string | null | undefined) {
+  if (!dongCode) {
+    return null;
+  }
+
+  return NODE_BY_DONG_CODE.get(dongCode) ?? null;
+}
+
+export function findRegionNodeByDongName(dongName: string | null | undefined) {
+  if (!dongName) {
+    return null;
+  }
+
+  return NODE_BY_DONG_NAME.get(dongName) ?? null;
 }
 
 export function getRegionLabel(path: string | null | undefined) {

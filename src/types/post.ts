@@ -1,3 +1,8 @@
+export type PostLocation = {
+  latitude: number;
+  longitude: number;
+};
+
 export type PostListItem = {
   id: string;
   content: string;

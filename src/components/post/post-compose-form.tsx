@@ -10,6 +10,7 @@ import {
 } from "../../lib/ui/tokens";
 
 export type PostComposeFormProps = PostComposeState & {
+  locationStatusText?: string | null;
   onChangeContent?: (value: string) => void;
   onSubmit?: FormEventHandler<HTMLFormElement>;
   submitDisabled?: boolean;
@@ -22,6 +23,7 @@ export function PostComposeForm({
   duplicateBlocked,
   errorMessage,
   locationResolved,
+  locationStatusText,
   resolvedDongName,
   submitting,
   onChangeContent,
@@ -56,8 +58,8 @@ export function PostComposeForm({
         }}
       >
         {locationResolved
-          ? `${resolvedDongName}에서 작성 중`
-          : "위치 확인이 필요합니다."}
+          ? `${resolvedDongName}에서 작성 중이에요.`
+          : (locationStatusText ?? "현재 위치를 확인하는 중이에요.")}
       </p>
 
       <label
@@ -75,7 +77,7 @@ export function PostComposeForm({
         id="post-content"
         maxLength={100}
         onChange={(event) => onChangeContent?.(event.target.value)}
-        placeholder="지금 있는 곳에서 느낀 불편이나 좋은 점을 100자 안으로 남겨 보세요."
+        placeholder="지금 있는 곳의 불편함이나 좋았던 점을 100자 안으로 적어 보세요."
         style={{
           border: `1px solid ${uiColors.border}`,
           borderRadius: uiRadius.md,
@@ -111,7 +113,7 @@ export function PostComposeForm({
               margin: 0,
             }}
           >
-            {`${cooldownRemainingSeconds}초 후 다시 작성할 수 있어요.`}
+            {`${cooldownRemainingSeconds}초 뒤에 다시 작성할 수 있어요.`}
           </p>
         ) : null}
 
@@ -123,8 +125,8 @@ export function PostComposeForm({
               margin: 0,
             }}
           >
-            같은 내용의 글이 이미 등록되어 있어요. 내용을 조금 바꿔 다시 시도해
-            주세요.
+            같은 내용의 글이 이미 등록되어 있어요. 내용을 조금 바꿔 다시
+            시도해 주세요.
           </p>
         ) : null}
 

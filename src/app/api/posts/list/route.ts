@@ -1,4 +1,5 @@
 import { ok } from "../../../../lib/api/response";
+import { isValidCoordinateInput } from "../../../../lib/geo/resolve-location";
 import { loadPostsListRepository } from "../../../../lib/posts/repository";
 
 type PostsListRequest = {
@@ -17,6 +18,7 @@ export async function POST(request: Request) {
   const postListState = await loadPostsListRepository({
     anonymousDeviceId: body.anonymousDeviceId,
     limit: body.pagination?.limit ?? 10,
+    location: isValidCoordinateInput(body.location) ? body.location : undefined,
   });
 
   return ok({

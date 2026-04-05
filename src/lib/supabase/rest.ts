@@ -2,6 +2,21 @@ import { getSupabaseConfig, hasSupabaseServerConfig } from "./config";
 
 type RequestMethod = "GET" | "POST" | "PATCH" | "DELETE";
 
+function buildSupabaseAuthHeaders(
+  key: string,
+  extraHeaders?: Record<string, string>,
+) {
+  const isOpaqueKey =
+    key.startsWith("sb_publishable_") || key.startsWith("sb_secret_");
+
+  return {
+    apikey: key,
+    ...(isOpaqueKey ? {} : { Authorization: `Bearer ${key}` }),
+    "Content-Type": "application/json",
+    ...extraHeaders,
+  };
+}
+
 async function supabaseRestRequest<T>(
   path: string,
   method: RequestMethod,
@@ -13,12 +28,10 @@ async function supabaseRestRequest<T>(
   }
 
   const config = getSupabaseConfig();
-  const headers: Record<string, string> = {
-    apikey: config.serviceRoleKey!,
-    Authorization: `Bearer ${config.serviceRoleKey!}`,
-    "Content-Type": "application/json",
-    ...extraHeaders,
-  };
+  const headers = buildSupabaseAuthHeaders(
+    config.serviceRoleKey!,
+    extraHeaders,
+  );
 
   const response = await fetch(`${config.url}/rest/v1/${path}`, {
     method,
@@ -70,11 +83,7 @@ export async function supabaseRpc<T>(fn: string, body: unknown) {
   const config = getSupabaseConfig();
   const response = await fetch(`${config.url}/rest/v1/rpc/${fn}`, {
     method: "POST",
-    headers: {
-      apikey: config.serviceRoleKey!,
-      Authorization: `Bearer ${config.serviceRoleKey!}`,
-      "Content-Type": "application/json",
-    },
+    headers: buildSupabaseAuthHeaders(config.serviceRoleKey!),
     body: JSON.stringify(body),
     cache: "no-store",
   });

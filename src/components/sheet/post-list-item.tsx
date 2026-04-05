@@ -8,6 +8,10 @@ import { uiColors, uiSpacing } from "../../lib/ui/tokens";
 export type PostListItemProps = PostListItemModel;
 
 function formatDistance(distanceMeters: number) {
+  if (!Number.isFinite(distanceMeters) || distanceMeters >= 900000) {
+    return "거리 미확인";
+  }
+
   if (distanceMeters < 1000) {
     return `${distanceMeters}m`;
   }
