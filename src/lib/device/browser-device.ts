@@ -1,4 +1,4 @@
-import type { ApiResponse } from "../../types/api";
+import { createJsonPostRequestInit, fetchClientApiData } from "../api/client";
 
 const ANONYMOUS_DEVICE_STORAGE_KEY = "shout.anonymousDeviceId";
 const ANONYMOUS_DEVICE_COOKIE_KEY = "shout_anonymous_device_id";
@@ -87,25 +87,15 @@ export async function ensureRegisteredBrowserDevice(options?: { force?: boolean 
     return anonymousDeviceId;
   }
 
-  const response = await fetch("/api/device/register", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
+  const data = await fetchClientApiData<RegisterDeviceResponse>({
+    errorMessage: "디바이스 등록에 실패했습니다.",
+    init: createJsonPostRequestInit({
       anonymousDeviceId,
     }),
+    path: "/api/device/register",
   });
-  const json = (await response.json()) as ApiResponse<RegisterDeviceResponse>;
-
-  if (!response.ok || !json.success || !json.data) {
-    throw new Error(
-      json.error?.message ?? "디바이스 등록에 실패했습니다.",
-    );
-  }
-
-  persistAnonymousDeviceId(json.data.device.anonymousDeviceId);
+  persistAnonymousDeviceId(data.device.anonymousDeviceId);
   markBrowserDeviceRegistered();
 
-  return json.data.device.anonymousDeviceId;
+  return data.device.anonymousDeviceId;
 }

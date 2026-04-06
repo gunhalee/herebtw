@@ -92,7 +92,6 @@ export function HomeScreen({
     handleSelectReport,
     handleToggleAgree,
   } = useHomePostActions({
-    postListState,
     postListStateRef,
     feedLocationRef,
     setPostListState,

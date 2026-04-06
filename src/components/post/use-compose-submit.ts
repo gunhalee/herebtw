@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useRef, type Dispatch, type FormEvent, type SetStateAction } from "react";
+import { createJsonPostRequestInit, fetchClientApiData } from "../../lib/api/client";
 import { ensureRegisteredBrowserDevice } from "../../lib/device/browser-device";
 import type { ResolvedAdministrativeLocation } from "../../lib/geo/browser-administrative-location-resolver";
-import type { ApiResponse } from "../../types/api";
 import type { PostComposeState } from "../../types/post";
 
 type UseComposeSubmitParams = {
@@ -83,12 +83,13 @@ export function useComposeSubmit({
 
     try {
       const anonymousDeviceId = await ensureDeviceRegistrationStarted();
-      const response = await fetch("/api/posts", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
+      await fetchClientApiData<{
+        post: {
+          id: string;
+        };
+      }>({
+        errorMessage: "글을 등록하지 못했어요.",
+        init: createJsonPostRequestInit({
           anonymousDeviceId,
           content: composeState.content,
           location: {
@@ -96,16 +97,8 @@ export function useComposeSubmit({
             longitude: resolvedLocation.longitude,
           },
         }),
+        path: "/api/posts",
       });
-      const json = (await response.json()) as ApiResponse<{
-        post: {
-          id: string;
-        };
-      }>;
-
-      if (!response.ok || !json.success || !json.data) {
-        throw new Error(json.error?.message ?? "글을 등록하지 못했어요.");
-      }
 
       if (onSuccess) {
         await onSuccess();

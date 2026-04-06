@@ -1,5 +1,5 @@
-import type { ApiResponse } from "../../types/api";
 import type { PostLocation } from "../../types/post";
+import { createJsonPostRequestInit, fetchClientApiData } from "../api/client";
 import type { AdministrativeLocationSnapshot } from "./browser-administrative-location";
 
 export type ResolvedAdministrativeLocation = PostLocation &
@@ -14,24 +14,15 @@ type ResolveLocationResponse = {
 export async function resolveAdministrativeLocation(
   location: PostLocation,
 ): Promise<ResolvedAdministrativeLocation> {
-  const response = await fetch("/api/location/resolve", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
+  const data = await fetchClientApiData<ResolveLocationResponse>({
+    errorMessage: "현재 위치를 행정동으로 확인하지 못했습니다.",
+    init: createJsonPostRequestInit({
       location,
     }),
+    path: "/api/location/resolve",
   });
-  const json = (await response.json()) as ApiResponse<ResolveLocationResponse>;
 
-  if (!response.ok || !json.success || !json.data) {
-    throw new Error(
-      json.error?.message ?? "현재 위치를 행정동으로 확인하지 못했습니다.",
-    );
-  }
-
-  return json.data.location;
+  return data.location;
 }
 
 export function getBrowserLocationErrorMessage(error: unknown) {

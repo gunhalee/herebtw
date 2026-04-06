@@ -1,4 +1,7 @@
-import type { ApiResponse } from "../../types/api";
+import {
+  createJsonPostRequestInit,
+  fetchClientApiData,
+} from "../../lib/api/client";
 
 type ToggleAgreeResponse = {
   postId: string;
@@ -15,22 +18,13 @@ export async function toggleHomePostAgree(
   postId: string,
   anonymousDeviceId: string,
 ) {
-  const response = await fetch(`/api/posts/${postId}/agree/toggle`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
+  return fetchClientApiData<ToggleAgreeResponse>({
+    errorMessage: "맞아요 상태를 반영하지 못했습니다.",
+    init: createJsonPostRequestInit({
       anonymousDeviceId,
     }),
+    path: `/api/posts/${postId}/agree/toggle`,
   });
-  const json = (await response.json()) as ApiResponse<ToggleAgreeResponse>;
-
-  if (!response.ok || !json.success || !json.data) {
-    throw new Error(json.error?.message ?? "맞아요 상태를 반영하지 못했습니다.");
-  }
-
-  return json.data;
 }
 
 export async function reportHomePost(
@@ -38,21 +32,18 @@ export async function reportHomePost(
   anonymousDeviceId: string,
   reasonCode = "other_policy",
 ) {
-  const response = await fetch(`/api/posts/${postId}/report`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
+  const data = await fetchClientApiData<ReportPostResponse>({
+    errorMessage: "신고를 접수하지 못했습니다.",
+    init: createJsonPostRequestInit({
       anonymousDeviceId,
       reasonCode,
     }),
+    path: `/api/posts/${postId}/report`,
   });
-  const json = (await response.json()) as ApiResponse<ReportPostResponse>;
 
-  if (!response.ok || !json.success || !json.data?.reported) {
-    throw new Error(json.error?.message ?? "신고를 접수하지 못했습니다.");
+  if (!data.reported) {
+    throw new Error("신고를 접수하지 못했습니다.");
   }
 
-  return json.data;
+  return data;
 }

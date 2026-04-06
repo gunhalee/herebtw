@@ -2,7 +2,6 @@ import type { PostLocation } from "../../types/post";
 
 const METERS_PER_DEGREE_LATITUDE = 111320;
 const LOCATION_BUCKET_SIZE_METERS = 100;
-const MAX_PLAUSIBLE_DISTANCE_METERS = 20_100_000;
 export const GLOBAL_FEED_DISTANCE_SENTINEL_METERS = -1;
 
 function toRadians(value: number) {
@@ -16,25 +15,34 @@ function getMetersPerDegreeLongitude(latitude: number) {
   );
 }
 
-type QuantizedLocation = PostLocation & {
+type QuantizedLocation100MeterGrid = PostLocation & {
   latitudeBucket100m: number;
   longitudeBucket100m: number;
 };
 
+function getLatitudeBucket100m(latitude: number) {
+  return Math.round(
+    (latitude * METERS_PER_DEGREE_LATITUDE) / LOCATION_BUCKET_SIZE_METERS,
+  );
+}
+
+function getLongitudeBucket100m(longitude: number, latitude: number) {
+  return Math.round(
+    (longitude * getMetersPerDegreeLongitude(latitude)) / LOCATION_BUCKET_SIZE_METERS,
+  );
+}
+
 export function quantizeLocationTo100MeterGrid(
   location: PostLocation,
-): QuantizedLocation {
-  const latitudeBucket100m = Math.round(
-    (location.latitude * METERS_PER_DEGREE_LATITUDE) /
-      LOCATION_BUCKET_SIZE_METERS,
-  );
+): QuantizedLocation100MeterGrid {
+  const latitudeBucket100m = getLatitudeBucket100m(location.latitude);
   const snappedLatitude =
     (latitudeBucket100m * LOCATION_BUCKET_SIZE_METERS) /
     METERS_PER_DEGREE_LATITUDE;
   const metersPerDegreeLongitude = getMetersPerDegreeLongitude(location.latitude);
-  const longitudeBucket100m = Math.round(
-    (location.longitude * metersPerDegreeLongitude) /
-      LOCATION_BUCKET_SIZE_METERS,
+  const longitudeBucket100m = getLongitudeBucket100m(
+    location.longitude,
+    location.latitude,
   );
   const snappedLongitude =
     (longitudeBucket100m * LOCATION_BUCKET_SIZE_METERS) /
@@ -51,7 +59,7 @@ export function quantizeLocationTo100MeterGrid(
 export function dequantizeLocationFrom100MeterGridBuckets(input: {
   latitudeBucket100m: number;
   longitudeBucket100m: number;
-}): QuantizedLocation {
+}): QuantizedLocation100MeterGrid {
   const latitude =
     (input.latitudeBucket100m * LOCATION_BUCKET_SIZE_METERS) /
     METERS_PER_DEGREE_LATITUDE;
@@ -66,29 +74,4 @@ export function dequantizeLocationFrom100MeterGridBuckets(input: {
     latitudeBucket100m: input.latitudeBucket100m,
     longitudeBucket100m: input.longitudeBucket100m,
   };
-}
-
-export function formatBucketedDistance(distanceMeters: number) {
-  if (distanceMeters === GLOBAL_FEED_DISTANCE_SENTINEL_METERS) {
-    return "전체 피드";
-  }
-
-  if (
-    !Number.isFinite(distanceMeters) ||
-    distanceMeters < 0 ||
-    distanceMeters > MAX_PLAUSIBLE_DISTANCE_METERS
-  ) {
-    return "거리 미확인";
-  }
-
-  if (distanceMeters < 100) {
-    return "100m 이내";
-  }
-
-  if (distanceMeters < 1000) {
-    return `${Math.ceil(distanceMeters / 100) * 100}m`;
-  }
-
-  const bucketedMeters = Math.ceil(distanceMeters / 100) * 100;
-  return `${(bucketedMeters / 1000).toFixed(1)}km`;
 }

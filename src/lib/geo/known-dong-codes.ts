@@ -1,37 +1,13 @@
-const KNOWN_DONG_CODES = new Map<string, string>([
-  ["역삼1동", "11680640"],
-  ["역삼2동", "11680650"],
-  ["논현1동", "11680521"],
-  ["서교동", "11440660"],
-  ["연남동", "11440720"],
-  ["합정동", "11440680"],
-  ["잠실본동", "11710610"],
-  ["방이1동", "11710562"],
-  ["문정1동", "11710631"],
-  ["우1동", "26350510"],
-  ["중1동", "26350530"],
-  ["좌1동", "26350610"],
-  ["남천2동", "26500660"],
-  ["광안1동", "26500530"],
-  ["민락동", "26500680"],
-  ["온천1동", "26260510"],
-  ["명륜동", "26260570"],
-  ["사직1동", "26260610"],
-  ["송도1동", "28185820"],
-  ["동춘1동", "28185710"],
-  ["연수1동", "28185600"],
-  ["부평1동", "28237510"],
-  ["삼산1동", "28237670"],
-  ["갈산1동", "28237620"],
-  ["구월1동", "28200530"],
-  ["논현고잔동", "28200720"],
-  ["만수1동", "28200660"],
-]);
+import knownDongCodeData from "./data/known-dong-codes.json";
+
+type KnownDongCodesPayload = Record<string, string>;
+
+const knownDongCodes = knownDongCodeData as KnownDongCodesPayload;
 
 export function findKnownDongCode(dongName: string | null | undefined) {
   if (!dongName) {
     return null;
   }
 
-  return KNOWN_DONG_CODES.get(dongName.trim()) ?? null;
+  return knownDongCodes[dongName.trim()] ?? null;
 }

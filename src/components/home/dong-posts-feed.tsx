@@ -1,11 +1,10 @@
-import type { CSSProperties, RefObject } from "react";
-import { EmptyState } from "../common/empty-state";
+import type { RefObject } from "react";
 import { ErrorState } from "../common/error-state";
 import { LoadingState } from "../common/loading-state";
-import { PostListItem } from "../sheet/post-list-item";
-import { homeScreenCopy } from "../../lib/content/home-copy";
 import type { PostListState } from "../../types/post";
-import { uiColors, uiRadius, uiSpacing } from "../../lib/ui/tokens";
+import { uiColors, uiSpacing } from "../../lib/ui/tokens";
+import { DongPostsFeedContent } from "./dong-posts-feed-content";
+import { DongPostsFeedVeil } from "./dong-posts-feed-veil";
 
 type DongPostsFeedProps = {
   activeMenuPostId?: string | null;
@@ -100,77 +99,18 @@ export function DongPostsFeed({
           <div
             className={shouldObscurePosts ? "global-feed-preview__content" : undefined}
           >
-            {state.empty ? (
-              <EmptyState
-                title={homeScreenCopy.emptyTitle}
-                description={homeScreenCopy.emptyDescription}
-              />
-            ) : (
-              <div
-                style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: uiSpacing.md,
-                }}
-              >
-                {state.items.map((item, index) => (
-                  <div
-                    data-post-id={item.id}
-                    key={item.id}
-                    className={
-                      shouldObscurePosts ? "global-feed-preview__card" : undefined
-                    }
-                    style={
-                      ({
-                        animationDelay: shouldObscurePosts
-                          ? `${index * 120}ms`
-                          : undefined,
-                        position: "relative",
-                        zIndex: item.id === activeMenuPostId ? 2 : undefined,
-                      } satisfies CSSProperties)
-                    }
-                  >
-                    <PostListItem
-                      {...item}
-                      isMenuOpen={item.id === activeMenuPostId}
-                      onCloseMenu={onCloseMenu}
-                      onOpenMenu={onOpenMenu}
-                      onSelectReport={onSelectReport}
-                      onToggleAgree={onToggleAgree}
-                    />
-                  </div>
-                ))}
-                {state.nextCursor && !state.loadingMore ? (
-                  <button
-                    onClick={onLoadMore}
-                    style={{
-                      appearance: "none",
-                      background: "#fffdfa",
-                      border: "1px solid #e7dccd",
-                      borderRadius: uiRadius.pill,
-                      color: uiColors.textStrong,
-                      cursor: "pointer",
-                      fontSize: "14px",
-                      fontWeight: 700,
-                      padding: `${uiSpacing.md} ${uiSpacing.lg}`,
-                      width: "100%",
-                    }}
-                    type="button"
-                  >
-                    더 보기
-                  </button>
-                ) : null}
-                {state.loadingMore ? <LoadingState label="더 불러오는 중" /> : null}
-              </div>
-            )}
+            <DongPostsFeedContent
+              activeMenuPostId={activeMenuPostId}
+              shouldObscurePosts={shouldObscurePosts}
+              state={state}
+              onCloseMenu={onCloseMenu}
+              onLoadMore={onLoadMore}
+              onOpenMenu={onOpenMenu}
+              onSelectReport={onSelectReport}
+              onToggleAgree={onToggleAgree}
+            />
           </div>
-          {shouldObscurePosts ? (
-            <div aria-hidden="true" className="global-feed-preview__veil">
-              <div className="global-feed-preview__badge">
-                서비스 이용을 위해 위치 권한을 허용해주세요.
-              </div>
-            </div>
-          ) : null}
+          {shouldObscurePosts ? <DongPostsFeedVeil /> : null}
         </div>
       </div>
     </div>

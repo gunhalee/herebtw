@@ -1,6 +1,9 @@
 import { writeCachedNearbyPostList } from "../../lib/posts/browser-nearby-post-cache";
+import {
+  createJsonPostRequestInit,
+  fetchClientApiData,
+} from "../../lib/api/client";
 import { quantizeLocationTo100MeterGrid } from "../../lib/geo/location-buckets";
-import type { ApiResponse } from "../../types/api";
 import type { PostListState, PostLocation } from "../../types/post";
 
 type PostsListResponse = {
@@ -22,42 +25,88 @@ export type PostEngagementSnapshotResponse = {
   }>;
 };
 
-async function fetchNearbyPostsList(
+const DEFAULT_FEED_PAGE_LIMIT = 10;
+
+function cacheNearbyPostsList(
   location: PostLocation,
+  data: PostsListResponse,
   cursor?: string | null,
-  anonymousDeviceId?: string,
-  limit = 10,
 ) {
-  const quantizedLocation = quantizeLocationTo100MeterGrid(location);
+  if (cursor) {
+    return;
+  }
+
+  writeCachedNearbyPostList(location, {
+    items: data.items,
+    nextCursor: data.nextCursor,
+  });
+}
+
+function createNearbyFeedSearchParams(input: {
+  anonymousDeviceId?: string;
+  cursor?: string | null;
+  limit: number;
+  location: PostLocation;
+}) {
+  const quantizedLocation = quantizeLocationTo100MeterGrid(input.location);
   const params = new URLSearchParams({
-    limit: String(limit),
+    limit: String(input.limit),
     latitudeBucket100m: String(quantizedLocation.latitudeBucket100m),
     longitudeBucket100m: String(quantizedLocation.longitudeBucket100m),
+  });
+
+  if (input.cursor) {
+    params.set("cursor", input.cursor);
+  }
+
+  if (input.anonymousDeviceId) {
+    params.set("anonymousDeviceId", input.anonymousDeviceId);
+  }
+
+  return params;
+}
+
+function createGlobalFeedSearchParams(cursor?: string | null, limit = DEFAULT_FEED_PAGE_LIMIT) {
+  const params = new URLSearchParams({
+    limit: String(limit),
   });
 
   if (cursor) {
     params.set("cursor", cursor);
   }
 
-  if (anonymousDeviceId) {
-    params.set("anonymousDeviceId", anonymousDeviceId);
-  }
+  return params;
+}
 
-  const response = await fetch(`/api/feed/nearby?${params.toString()}`);
-  const json = (await response.json()) as ApiResponse<PostsListResponse>;
+async function fetchPostsListPage(
+  path: string,
+  errorMessage: string,
+) {
+  return fetchClientApiData<PostsListResponse>({
+    errorMessage,
+    path,
+  });
+}
 
-  if (!response.ok || !json.success || !json.data) {
-    throw new Error(json.error?.message ?? "동네 글을 불러오지 못했습니다.");
-  }
+async function fetchNearbyPostsList(
+  location: PostLocation,
+  cursor?: string | null,
+  anonymousDeviceId?: string,
+  limit = DEFAULT_FEED_PAGE_LIMIT,
+) {
+  const data = await fetchPostsListPage(
+    `/api/feed/nearby?${createNearbyFeedSearchParams({
+      anonymousDeviceId,
+      cursor,
+      limit,
+      location,
+    }).toString()}`,
+    "동네 글을 불러오지 못했습니다.",
+  );
 
-  if (!cursor) {
-    writeCachedNearbyPostList(location, {
-      items: json.data.items,
-      nextCursor: json.data.nextCursor,
-    });
-  }
+  cacheNearbyPostsList(location, data, cursor);
 
-  return json.data;
+  return data;
 }
 
 export async function fetchNearbyFeedSync(
@@ -66,70 +115,51 @@ export async function fetchNearbyFeedSync(
   limit: number,
   anonymousDeviceId?: string,
 ) {
-  const response = await fetch("/api/feed/nearby/sync", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    cache: "no-store",
-    body: JSON.stringify({
+  return fetchClientApiData<NearbyFeedSyncResponse>({
+    errorMessage: "피드 갱신에 실패했습니다.",
+    init: createJsonPostRequestInit({
       anonymousDeviceId,
       loadedPostIds,
       limit,
       location,
     }),
+    path: "/api/feed/nearby/sync",
   });
-  const json = (await response.json()) as ApiResponse<NearbyFeedSyncResponse>;
-
-  if (!response.ok || !json.success || !json.data) {
-    throw new Error(json.error?.message ?? "피드 갱신에 실패했습니다.");
-  }
-
-  return json.data;
 }
 
 export async function fetchPostEngagementSnapshot(
   postIds: string[],
   anonymousDeviceId?: string,
 ) {
-  const response = await fetch("/api/posts/engagement", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    cache: "no-store",
-    body: JSON.stringify({
+  return fetchClientApiData<PostEngagementSnapshotResponse>({
+    errorMessage: "맞아요 상태를 갱신하지 못했습니다.",
+    init: createJsonPostRequestInit({
       anonymousDeviceId,
       postIds,
     }),
+    path: "/api/posts/engagement",
   });
-  const json =
-    (await response.json()) as ApiResponse<PostEngagementSnapshotResponse>;
-
-  if (!response.ok || !json.success || !json.data) {
-    throw new Error(json.error?.message ?? "맞아요 상태를 갱신하지 못했습니다.");
-  }
-
-  return json.data;
 }
 
-async function fetchGlobalPostsList(cursor?: string | null, limit = 10) {
-  const params = new URLSearchParams({
-    limit: String(limit),
-  });
+async function fetchGlobalPostsList(
+  cursor?: string | null,
+  limit = DEFAULT_FEED_PAGE_LIMIT,
+) {
+  return fetchPostsListPage(
+    `/api/feed/global?${createGlobalFeedSearchParams(cursor, limit).toString()}`,
+    "전역 피드를 불러오지 못했습니다.",
+  );
+}
 
-  if (cursor) {
-    params.set("cursor", cursor);
-  }
-
-  const response = await fetch(`/api/feed/global?${params.toString()}`);
-  const json = (await response.json()) as ApiResponse<PostsListResponse>;
-
-  if (!response.ok || !json.success || !json.data) {
-    throw new Error(json.error?.message ?? "전역 피드를 불러오지 못했습니다.");
-  }
-
-  return json.data;
+function createActiveHomeFeedPageResult(
+  location: PostLocation | null,
+  data: PostsListResponse,
+) {
+  return {
+    data,
+    feedSortMode: location ? ("nearby" as const) : ("global" as const),
+    postSort: location ? ("distance" as const) : ("latest" as const),
+  };
 }
 
 export async function fetchActiveHomeFeedPage(
@@ -147,9 +177,5 @@ export async function fetchActiveHomeFeedPage(
       )
     : await fetchGlobalPostsList(options?.cursor);
 
-  return {
-    data,
-    feedSortMode: location ? ("nearby" as const) : ("global" as const),
-    postSort: location ? ("distance" as const) : ("latest" as const),
-  };
+  return createActiveHomeFeedPageResult(location, data);
 }
