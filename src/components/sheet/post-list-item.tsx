@@ -48,6 +48,8 @@ export function PostListItem({
         display: "flex",
         flexDirection: "column",
         gap: uiSpacing.xs,
+        position: "relative",
+        zIndex: isMenuOpen ? 2 : undefined,
       }}
     >
       <div
