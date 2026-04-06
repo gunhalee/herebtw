@@ -4,6 +4,7 @@ import type {
   PostListState,
   PostLocation,
 } from "../../types/post";
+import { quantizeLocationTo100MeterGrid } from "../geo/location-buckets";
 import { getSupabaseServerClient } from "../supabase/server";
 import {
   supabaseDelete,
@@ -31,6 +32,8 @@ type PostRow = {
   author_device_id?: string;
   latitude?: number | null;
   longitude?: number | null;
+  latitude_bucket_100m?: number | null;
+  longitude_bucket_100m?: number | null;
   created_at: string;
   delete_expires_at: string;
 };
@@ -354,14 +357,20 @@ export async function createPostRepository(
 
   const rows = await supabaseInsert<PostRow[]>(
     "posts?select=id,content,administrative_dong_name,created_at,delete_expires_at",
-    {
+    (() => {
+      const quantizedLocation = quantizeLocationTo100MeterGrid(location);
+
+      return {
       author_device_id: device.id,
       content: state.content.trim(),
       administrative_dong_name: state.resolvedDongName,
       administrative_dong_code: state.resolvedDongCode,
-      latitude: location.latitude,
-      longitude: location.longitude,
-    },
+      latitude: quantizedLocation.latitude,
+      longitude: quantizedLocation.longitude,
+      latitude_bucket_100m: quantizedLocation.latitudeBucket100m,
+      longitude_bucket_100m: quantizedLocation.longitudeBucket100m,
+    };
+    })(),
   );
 
   return {

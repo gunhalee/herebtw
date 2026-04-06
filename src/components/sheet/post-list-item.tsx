@@ -2,22 +2,11 @@
 
 import Image from "next/image";
 import type { PostListItem as PostListItemModel } from "../../types/post";
+import { formatBucketedDistance } from "../../lib/geo/location-buckets";
 import thumbsUpImage from "../thumbs_up.png";
 import { uiColors, uiSpacing } from "../../lib/ui/tokens";
 
 export type PostListItemProps = PostListItemModel;
-
-function formatDistance(distanceMeters: number) {
-  if (!Number.isFinite(distanceMeters) || distanceMeters >= 900000) {
-    return "거리 미확인";
-  }
-
-  if (distanceMeters < 1000) {
-    return `${distanceMeters}m`;
-  }
-
-  return `${(distanceMeters / 1000).toFixed(1)}km`;
-}
 
 export function PostListItem({
   id,
@@ -139,7 +128,7 @@ export function PostListItem({
               <span style={{ color: uiColors.textStrong }}>
                 {administrativeDongName}
               </span>
-              {` 근데 · ${formatDistance(distanceMeters)} · ${relativeTime}`}
+              {` 근데 · ${formatBucketedDistance(distanceMeters)} · ${relativeTime}`}
             </p>
 
             <button
