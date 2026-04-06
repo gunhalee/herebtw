@@ -298,7 +298,7 @@ function ComposeDongFlashcard({
   );
 }
 
-export type DongPostsScreenProps = {
+type DongPostsScreenProps = {
   currentDongName: string;
   animateComposeDongPlaceholder?: boolean;
   interactionLocked?: boolean;

@@ -1,4 +1,4 @@
-export type BrowserCoordinates = {
+type BrowserCoordinates = {
   latitude: number;
   longitude: number;
 };
@@ -7,7 +7,7 @@ function makeGeolocationError(code: string) {
   return new Error(code);
 }
 
-export function canUseBrowserGeolocation() {
+function canUseBrowserGeolocation() {
   return typeof window !== "undefined" && "geolocation" in navigator;
 }
 

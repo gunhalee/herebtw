@@ -8,15 +8,11 @@ import {
 import type { PostComposeState } from "../../../types/post";
 
 type CreatePostRequest = {
-  anonymousDeviceId: string;
-  content: string;
-  location: {
+  anonymousDeviceId?: string;
+  content?: string;
+  location?: {
     latitude: number;
     longitude: number;
-  };
-  clientResolved?: {
-    administrativeDongName: string;
-    administrativeDongCode: string;
   };
 };
 
@@ -58,8 +54,8 @@ export async function POST(request: Request) {
   }
 
   const composeState: PostComposeState = {
-    content: body.content,
-    charCount: body.content.trim().length,
+    content: body.content ?? "",
+    charCount: body.content?.trim().length ?? 0,
     submitting: false,
     locationResolved: true,
     resolvedDongName: formatAdministrativeAreaName({
@@ -68,7 +64,6 @@ export async function POST(request: Request) {
       administrativeDongName: resolvedLocation.administrativeDongName,
     }),
     resolvedDongCode: resolvedLocation.administrativeDongCode,
-    cooldownRemainingSeconds: 0,
     duplicateBlocked: false,
     errorMessage: null,
   };
@@ -87,7 +82,7 @@ export async function POST(request: Request) {
           : "VALIDATION_ERROR",
         message:
           result.nextState.errorMessage ??
-          "글을 등록하지 못했습니다. 잠시 후 다시 시도해 주세요.",
+          "글을 등록하지 못했습니다. 잠시 후 다시 시도해주세요.",
       },
       400,
     );
@@ -102,15 +97,6 @@ export async function POST(request: Request) {
       deleteExpiresAt: new Date(
         Date.now() + result.detailState.deleteRemainingSeconds * 1000,
       ).toISOString(),
-    },
-    postWriteState: {
-      canDelete: result.detailState.canDelete,
-      deleteRemainingSeconds: result.detailState.deleteRemainingSeconds,
-    },
-    imageCard: {
-      downloadUrl: `/api/posts/${result.detailState.postId}/card`,
-      title: "여기 근데",
-      administrativeDongName: result.detailState.administrativeDongName,
     },
   });
 }

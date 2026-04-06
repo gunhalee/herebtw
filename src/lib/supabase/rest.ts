@@ -86,12 +86,6 @@ export async function supabaseUpsert<T>(path: string, body: unknown) {
   });
 }
 
-export async function supabaseDelete<T>(path: string) {
-  return supabaseRestRequest<T>(path, "DELETE", undefined, {
-    Prefer: "return=representation",
-  });
-}
-
 export async function supabaseRpc<T>(fn: string, body: unknown) {
   if (!hasSupabaseServerConfig()) {
     return null;

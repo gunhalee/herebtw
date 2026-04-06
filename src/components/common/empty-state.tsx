@@ -5,7 +5,7 @@ import {
   uiTypography,
 } from "../../lib/ui/tokens";
 
-export type EmptyStateProps = {
+type EmptyStateProps = {
   title?: string;
   description?: string;
 };

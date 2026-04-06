@@ -76,7 +76,3 @@ export const uiShadow = {
   sheet: "0 -18px 48px rgba(17, 24, 39, 0.16)",
   floating: "0 14px 32px rgba(17, 24, 39, 0.2)",
 } as const;
-
-export const uiLayout = {
-  maxWidth: "420px",
-} as const;

@@ -1,6 +1,6 @@
-export type PermissionMode = "unknown" | "granted" | "denied";
+type PermissionMode = "unknown" | "granted" | "denied";
 
-export type DeviceState = {
+type DeviceState = {
   anonymousDeviceId: string | null;
   deviceReady: boolean;
   permissionMode: PermissionMode;

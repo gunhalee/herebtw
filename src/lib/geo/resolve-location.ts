@@ -1,11 +1,11 @@
 import { reverseGeocode } from "./reverse-geocode";
 
-export type CoordinateInput = {
+type CoordinateInput = {
   latitude: number;
   longitude: number;
 };
 
-export type ResolvedLocation = CoordinateInput & {
+type ResolvedLocation = CoordinateInput & {
   administrativeDongName: string;
   administrativeDongCode: string;
   sidoName: string | null;

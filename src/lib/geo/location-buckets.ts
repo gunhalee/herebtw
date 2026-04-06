@@ -14,7 +14,7 @@ function getMetersPerDegreeLongitude(latitude: number) {
   );
 }
 
-export type QuantizedLocation = PostLocation & {
+type QuantizedLocation = PostLocation & {
   latitudeBucket100m: number;
   longitudeBucket100m: number;
 };

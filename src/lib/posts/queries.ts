@@ -1,12 +1,9 @@
 import { unstable_cache } from "next/cache";
 import type { AppShellState } from "../../types/device";
-import type { PostDetailState, PostListState } from "../../types/post";
+import type { PostListState } from "../../types/post";
 import { hasSupabaseServerConfig } from "../supabase/config";
-import { serializePostDetailState, serializePostListItem } from "./serializers";
-import { getMockPostDetailState } from "./mock-data";
 import {
   loadGlobalPostsListRepository,
-  loadPostDetailRepository,
   loadPostsListRepository,
 } from "./repository";
 
@@ -19,7 +16,7 @@ const loadCachedGlobalPostsList = unstable_cache(
   },
 );
 
-export function getInitialAppShellState(
+function getInitialAppShellState(
   anonymousDeviceId?: string | null,
 ): AppShellState {
   return {
@@ -35,7 +32,6 @@ export function getInitialAppShellState(
 export async function getHomePageState(): Promise<{
   appShellState: AppShellState;
   postListState: PostListState;
-  postDetailState: PostDetailState;
 }> {
   const appShellState = getInitialAppShellState();
 
@@ -45,32 +41,15 @@ export async function getHomePageState(): Promise<{
     return {
       appShellState,
       postListState,
-      postDetailState: serializePostDetailState(getMockPostDetailState()),
     };
   }
 
   const postListState = await loadPostsListRepository({
     limit: 10,
   });
-  const firstPostId = postListState.items[0]?.id ?? null;
-  const fallbackDetail = firstPostId
-    ? getMockPostDetailState(firstPostId)
-    : getMockPostDetailState();
-  const postDetailState = firstPostId
-    ? (await loadPostDetailRepository({
-        postId: firstPostId,
-      })) ?? fallbackDetail
-    : fallbackDetail;
-
-  const serializedPostListState: PostListState = {
-    ...postListState,
-    items: postListState.items.map(serializePostListItem),
-  };
-  const serializedDetailState = serializePostDetailState(postDetailState);
 
   return {
     appShellState,
-    postListState: serializedPostListState,
-    postDetailState: serializedDetailState,
+    postListState,
   };
 }

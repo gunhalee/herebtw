@@ -1,72 +1,37 @@
 "use client";
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { useRouter } from "next/navigation";
 import { createPortal } from "react-dom";
-import { PageShell } from "../common/page-shell";
 import { ensureRegisteredBrowserDevice } from "../../lib/device/browser-device";
 import {
   readCachedAdministrativeLocation,
   writeCachedAdministrativeLocation,
 } from "../../lib/geo/browser-administrative-location";
+import {
+  getBrowserLocationErrorMessage,
+  resolveAdministrativeLocation,
+  type ResolvedAdministrativeLocation,
+} from "../../lib/geo/browser-administrative-location-resolver";
 import { getCurrentBrowserCoordinates } from "../../lib/geo/browser-location";
 import {
   uiColors,
-  uiRadius,
   uiShadow,
   uiSpacing,
   uiTypography,
 } from "../../lib/ui/tokens";
 import type { ApiResponse } from "../../types/api";
 import type { PostComposeState } from "../../types/post";
-import { PostComposeForm } from "./post-compose-form";
-
-type ResolvedLocation = {
-  latitude: number;
-  longitude: number;
-  administrativeDongName: string;
-  administrativeDongCode: string;
-};
-
-type ResolveLocationResponse = {
-  location: ResolvedLocation;
-};
 
 type SheetViewportLayout = {
   keyboardInset: number;
   viewportHeight: number;
 };
 
-export type PostComposeExperienceProps = {
+type PostComposeExperienceProps = {
   dataSourceMode: "supabase" | "mock";
-  presentation?: "page" | "sheet";
   onDismiss?: () => void;
   onSuccess?: () => void | Promise<void>;
 };
-
-async function resolveAdministrativeLocation(location: {
-  latitude: number;
-  longitude: number;
-}) {
-  const response = await fetch("/api/location/resolve", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      location,
-    }),
-  });
-  const json = (await response.json()) as ApiResponse<ResolveLocationResponse>;
-
-  if (!response.ok || !json.success || !json.data) {
-    throw new Error(
-      json.error?.message ?? "현재 위치를 확인하지 못했어요.",
-    );
-  }
-
-  return json.data.location;
-}
 
 function createInitialComposeState(): PostComposeState {
   return {
@@ -76,30 +41,9 @@ function createInitialComposeState(): PostComposeState {
     locationResolved: false,
     resolvedDongName: null,
     resolvedDongCode: null,
-    cooldownRemainingSeconds: 0,
     duplicateBlocked: false,
     errorMessage: null,
   };
-}
-
-function getLocationErrorMessage(error: unknown) {
-  if (!(error instanceof Error)) {
-    return "현재 위치를 확인하지 못했어요. 잠시 후 다시 시도해 주세요.";
-  }
-
-  if (error.message === "GEOLOCATION_PERMISSION_DENIED") {
-    return "브라우저 위치 권한을 허용하면 이 동네에 글을 남길 수 있어요.";
-  }
-
-  if (error.message === "GEOLOCATION_TIMEOUT") {
-    return "위치 확인 시간이 초과됐어요. 잠시 후 다시 시도해 주세요.";
-  }
-
-  if (error.message === "GEOLOCATION_UNAVAILABLE") {
-    return "이 브라우저에서는 위치 확인을 사용할 수 없어요.";
-  }
-
-  return "현재 위치를 확인하지 못했어요. 잠시 후 다시 시도해 주세요.";
 }
 
 function readSheetViewportLayout(): SheetViewportLayout {
@@ -138,27 +82,23 @@ function readSheetViewportLayout(): SheetViewportLayout {
 
 export function PostComposeExperience({
   dataSourceMode,
-  presentation = "page",
   onDismiss,
   onSuccess,
 }: PostComposeExperienceProps) {
-  const router = useRouter();
   const [composeState, setComposeState] = useState(createInitialComposeState);
-  const [resolvedLocation, setResolvedLocation] = useState<ResolvedLocation | null>(
-    null,
-  );
+  const [resolvedLocation, setResolvedLocation] =
+    useState<ResolvedAdministrativeLocation | null>(null);
   const [locationStatusText, setLocationStatusText] = useState<string | null>(
     "현재 위치를 확인하는 중이에요.",
   );
   const [locationStatusTone, setLocationStatusTone] = useState<
     "neutral" | "danger"
   >("neutral");
-  const deviceRegistrationPromiseRef = useRef<Promise<string> | null>(null);
-  const touchScrollStartYRef = useRef<number | null>(null);
-  const isSheet = presentation === "sheet";
   const [sheetPortalReady, setSheetPortalReady] = useState(false);
   const [sheetViewportLayout, setSheetViewportLayout] =
     useState<SheetViewportLayout>(readSheetViewportLayout);
+  const deviceRegistrationPromiseRef = useRef<Promise<string> | null>(null);
+  const touchScrollStartYRef = useRef<number | null>(null);
 
   function ensureDeviceRegistrationStarted() {
     if (!deviceRegistrationPromiseRef.current) {
@@ -182,7 +122,7 @@ export function PostComposeExperience({
   }, [dataSourceMode]);
 
   useEffect(() => {
-    if (!isSheet || typeof document === "undefined") {
+    if (typeof document === "undefined") {
       return;
     }
 
@@ -217,7 +157,6 @@ export function PostComposeExperience({
       }
 
       const textarea = target.closest("#sheet-post-content");
-
       return textarea instanceof HTMLTextAreaElement ? textarea : null;
     };
 
@@ -306,23 +245,18 @@ export function PostComposeExperience({
       body.style.overscrollBehavior = previousBodyOverscrollBehavior;
       window.scrollTo(0, scrollY);
     };
-  }, [isSheet]);
+  }, []);
 
   useEffect(() => {
-    if (!isSheet) {
-      setSheetPortalReady(false);
-      return;
-    }
-
     setSheetPortalReady(true);
 
     return () => {
       setSheetPortalReady(false);
     };
-  }, [isSheet]);
+  }, []);
 
   useEffect(() => {
-    if (!isSheet || !onDismiss || typeof window === "undefined") {
+    if (!onDismiss || typeof window === "undefined") {
       return;
     }
 
@@ -337,10 +271,10 @@ export function PostComposeExperience({
     return () => {
       window.removeEventListener("keydown", handleKeyDown);
     };
-  }, [isSheet, onDismiss]);
+  }, [onDismiss]);
 
   useEffect(() => {
-    if (!isSheet || typeof window === "undefined") {
+    if (typeof window === "undefined") {
       return;
     }
 
@@ -360,16 +294,16 @@ export function PostComposeExperience({
       visualViewport?.removeEventListener("resize", syncViewportLayout);
       visualViewport?.removeEventListener("scroll", syncViewportLayout);
     };
-  }, [isSheet]);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
 
-    async function resolveLocation() {
+    async function loadLocation() {
       let displayedCachedLocation = false;
 
       function applyResolvedLocation(
-        nextLocation: ResolvedLocation,
+        nextLocation: ResolvedAdministrativeLocation,
         options?: {
           verified?: boolean;
         },
@@ -381,7 +315,7 @@ export function PostComposeExperience({
         setResolvedLocation(nextLocation);
         setLocationStatusTone("neutral");
         setLocationStatusText(
-          options?.verified ? null : "행정동을 다시 확인하는 중이에요.",
+          options?.verified ? null : "저장된 동네 정보를 다시 확인하는 중이에요.",
         );
         setComposeState((current) => ({
           ...current,
@@ -402,6 +336,7 @@ export function PostComposeExperience({
             {
               ...coordinates,
               ...cachedAdministrativeLocation,
+              countryCode: null,
             },
             {
               verified: false,
@@ -426,13 +361,13 @@ export function PostComposeExperience({
 
         if (displayedCachedLocation) {
           setLocationStatusTone("neutral");
-          setLocationStatusText("최근 확인한 행정동 기준으로 표시 중이에요.");
+          setLocationStatusText("가장 최근에 저장한 동네를 표시하고 있어요.");
           return;
         }
 
         setResolvedLocation(null);
         setLocationStatusTone("danger");
-        setLocationStatusText(getLocationErrorMessage(error));
+        setLocationStatusText(getBrowserLocationErrorMessage(error));
         setComposeState((current) => ({
           ...current,
           locationResolved: false,
@@ -442,7 +377,7 @@ export function PostComposeExperience({
       }
     }
 
-    void resolveLocation();
+    void loadLocation();
 
     return () => {
       cancelled = true;
@@ -465,8 +400,7 @@ export function PostComposeExperience({
     if (dataSourceMode !== "supabase") {
       setComposeState((current) => ({
         ...current,
-        errorMessage:
-          "Supabase 환경변수를 먼저 설정해야 실제로 글을 등록할 수 있어요.",
+        errorMessage: "실시간으로 글을 등록하려면 Supabase 연결이 필요해요.",
       }));
       return;
     }
@@ -474,8 +408,7 @@ export function PostComposeExperience({
     if (!resolvedLocation) {
       setComposeState((current) => ({
         ...current,
-        errorMessage:
-          "현재 위치를 확인해야 글을 등록할 수 있어요. 위치 권한을 확인해 주세요.",
+        errorMessage: "위치 확인이 끝난 뒤에 글을 등록할 수 있어요.",
       }));
       return;
     }
@@ -500,10 +433,6 @@ export function PostComposeExperience({
             latitude: resolvedLocation.latitude,
             longitude: resolvedLocation.longitude,
           },
-          clientResolved: {
-            administrativeDongName: resolvedLocation.administrativeDongName,
-            administrativeDongCode: resolvedLocation.administrativeDongCode,
-          },
         }),
       });
       const json = (await response.json()) as ApiResponse<{
@@ -513,7 +442,7 @@ export function PostComposeExperience({
       }>;
 
       if (!response.ok || !json.success || !json.data) {
-        throw new Error(json.error?.message ?? "글을 등록하지 못했습니다.");
+        throw new Error(json.error?.message ?? "글을 등록하지 못했어요.");
       }
 
       if (onSuccess) {
@@ -521,7 +450,7 @@ export function PostComposeExperience({
         return;
       }
 
-      router.replace("/");
+      onDismiss?.();
     } catch (error) {
       setComposeState((current) => ({
         ...current,
@@ -529,112 +458,12 @@ export function PostComposeExperience({
         errorMessage:
           error instanceof Error
             ? error.message
-            : "글을 등록하지 못했습니다.",
+            : "글을 등록하지 못했어요.",
       }));
     }
   }
 
-  const introCard = (
-    <header
-      style={{
-        background: uiColors.surfaceMuted,
-        border: `1px solid ${uiColors.border}`,
-        borderRadius: uiRadius.lg,
-        display: "flex",
-        flexDirection: "column",
-        gap: uiSpacing.xs,
-        padding: uiSpacing.xl,
-      }}
-    >
-      <h1
-        style={{
-          color: uiColors.textStrong,
-          fontSize: "22px",
-          lineHeight: 1.3,
-          margin: 0,
-        }}
-      >
-        여기 근데 올리기
-      </h1>
-
-      <p
-        style={{
-          color: uiColors.textMuted,
-          fontSize: uiTypography.body.fontSize,
-          margin: 0,
-        }}
-      >
-        지금 있는 위치에서 느낀 문제나 좋았던 점을 100자 안으로 남겨 주세요.
-      </p>
-
-      <div
-        style={{
-          background: dataSourceMode === "supabase" ? "#eff6ff" : "#fff7ed",
-          border: `1px solid ${
-            dataSourceMode === "supabase" ? "#93c5fd" : "#fdba74"
-          }`,
-          borderRadius: uiRadius.md,
-          color: dataSourceMode === "supabase" ? "#1d4ed8" : "#9a3412",
-          fontSize: "12px",
-          lineHeight: 1.5,
-          marginTop: uiSpacing.sm,
-          padding: `${uiSpacing.sm} ${uiSpacing.md}`,
-        }}
-      >
-        {dataSourceMode === "supabase"
-          ? "위치를 실제로 확인한 뒤 가까운 피드에 글이 올라가요."
-          : "샘플 모드예요. Supabase 환경변수를 연결해야 글이 실제로 저장돼요."}
-      </div>
-    </header>
-  );
-
-  const bodyContent = (
-    <>
-      <PostComposeForm
-        {...composeState}
-        locationStatusText={locationStatusText}
-        locationStatusTone={locationStatusTone}
-        onChangeContent={handleChangeContent}
-        onSubmit={handleSubmit}
-        submitDisabled={dataSourceMode !== "supabase"}
-      />
-
-      <section
-        style={{
-          background: uiColors.surface,
-          border: `1px solid ${uiColors.border}`,
-          borderRadius: uiRadius.lg,
-          display: "flex",
-          flexDirection: "column",
-          gap: uiSpacing.sm,
-          padding: uiSpacing.xl,
-        }}
-      >
-        <p
-          style={{
-            color: uiColors.textStrong,
-            fontSize: uiTypography.body.fontSize,
-            margin: 0,
-          }}
-        >
-          이제 글 등록은 브라우저 위치와 서버 위치 해석 결과를 같이 사용합니다.
-        </p>
-        <p
-          style={{
-            color: uiColors.textMuted,
-            fontSize: uiTypography.meta.fontSize,
-            lineHeight: 1.6,
-            margin: 0,
-          }}
-        >
-          위치 권한이 없으면 작성할 수 없고, 서버에서 현재 좌표를 다시 확인해
-          동 이름과 좌표를 함께 저장해요.
-        </p>
-      </section>
-    </>
-  );
-
-  const sheetSubmitDisabled =
+  const submitDisabled =
     dataSourceMode !== "supabase" ||
     composeState.submitting ||
     !composeState.locationResolved ||
@@ -656,15 +485,6 @@ export function PostComposeExperience({
     sheetViewportAvailableHeight,
   );
 
-  if (!isSheet) {
-    return (
-      <PageShell>
-        {introCard}
-        {bodyContent}
-      </PageShell>
-    );
-  }
-
   const sheetOverlay = (
     <div
       aria-modal="true"
@@ -672,7 +492,7 @@ export function PostComposeExperience({
       role="dialog"
     >
       <button
-        aria-label="작성 패널 닫기"
+        aria-label="글쓰기 닫기"
         className="compose-sheet-overlay__backdrop"
         onClick={onDismiss}
         type="button"
@@ -747,18 +567,18 @@ export function PostComposeExperience({
                   textAlign: "center",
                 }}
               >
-                여기 근데 올리기
+                여기 남기기
               </h2>
             </div>
 
             <button
-              disabled={sheetSubmitDisabled}
+              disabled={submitDisabled}
               style={{
                 appearance: "none",
                 background: "transparent",
                 border: "none",
-                color: sheetSubmitDisabled ? "#9ca3af" : uiColors.buttonPrimary,
-                cursor: sheetSubmitDisabled ? "default" : "pointer",
+                color: submitDisabled ? "#9ca3af" : uiColors.buttonPrimary,
+                cursor: submitDisabled ? "default" : "pointer",
                 fontSize: "18px",
                 fontWeight: 700,
                 justifySelf: "end",
@@ -767,7 +587,7 @@ export function PostComposeExperience({
               }}
               type="submit"
             >
-              {composeState.submitting ? "게시 중" : "게시"}
+              {composeState.submitting ? "등록 중..." : "등록"}
             </button>
           </div>
 
@@ -783,7 +603,7 @@ export function PostComposeExperience({
               id="sheet-post-content"
               maxLength={100}
               onChange={(event) => handleChangeContent(event.target.value)}
-              placeholder="지금 이 곳에서 느끼는 감정을 적어보세요"
+              placeholder="지금 이 주변에서 느낀 점을 남겨보세요."
               style={{
                 background: "transparent",
                 border: "none",
@@ -839,23 +659,11 @@ export function PostComposeExperience({
                 margin: 0,
               }}
             >
-              같은 내용의 글이 이미 등록되어 있어요. 내용을 조금 바꿔 다시 시도해 주세요.
+              같은 내용의 글이 이미 있어요. 내용을 조금 수정해 다시 시도해주세요.
             </p>
           ) : null}
 
-          {composeState.cooldownRemainingSeconds > 0 ? (
-            <p
-              style={{
-                color: uiColors.textMuted,
-                fontSize: uiTypography.meta.fontSize,
-                margin: 0,
-              }}
-            >
-              {`${composeState.cooldownRemainingSeconds}초 뒤에 다시 작성할 수 있어요.`}
-            </p>
-          ) : null}
-
-          {!composeState.locationResolved && locationStatusText ? (
+          {locationStatusText ? (
             <p
               style={{
                 color:

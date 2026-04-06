@@ -25,22 +25,6 @@ export type PostListState = {
   sort: "distance" | "latest";
 };
 
-export type PostDetailState = {
-  postId: string | null;
-  open: boolean;
-  loading: boolean;
-  content: string;
-  administrativeDongName: string;
-  distanceMeters: number;
-  relativeTime: string;
-  agreeCount: number;
-  myAgree: boolean;
-  canReport: boolean;
-  canDelete: boolean;
-  deleteRemainingSeconds: number;
-  errorMessage: string | null;
-};
-
 export type PostComposeState = {
   content: string;
   charCount: number;
@@ -48,7 +32,6 @@ export type PostComposeState = {
   locationResolved: boolean;
   resolvedDongName: string | null;
   resolvedDongCode: string | null;
-  cooldownRemainingSeconds: number;
   duplicateBlocked: boolean;
   errorMessage: string | null;
 };

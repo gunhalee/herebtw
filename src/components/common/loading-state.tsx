@@ -5,7 +5,7 @@ import {
   uiTypography,
 } from "../../lib/ui/tokens";
 
-export type LoadingStateProps = {
+type LoadingStateProps = {
   label?: string;
 };
 

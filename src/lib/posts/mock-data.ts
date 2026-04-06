@@ -1,5 +1,4 @@
 import type {
-  PostDetailState,
   PostListItem,
   PostListState,
 } from "../../types/post";
@@ -98,7 +97,7 @@ export function toggleMockPostAgree(postId: string) {
   };
 }
 
-export function getMockPostItems(): PostListItem[] {
+function getMockPostItems(): PostListItem[] {
   return [...MOCK_POSTS].sort((a, b) => a.distanceMeters - b.distanceMeters);
 }
 
@@ -113,25 +112,5 @@ export function getMockPostListState(): PostListState {
     empty: items.length === 0,
     errorMessage: null,
     sort: "distance",
-  };
-}
-
-export function getMockPostDetailState(postId = "post_1"): PostDetailState {
-  const post = MOCK_POSTS.find((item) => item.id === postId) ?? MOCK_POSTS[0];
-
-  return {
-    postId: post.id,
-    open: false,
-    loading: false,
-    content: post.content,
-    administrativeDongName: post.administrativeDongName,
-    distanceMeters: post.distanceMeters,
-    relativeTime: post.relativeTime,
-    agreeCount: post.agreeCount,
-    myAgree: post.myAgree,
-    canReport: post.canReport,
-    canDelete: true,
-    deleteRemainingSeconds: 143,
-    errorMessage: null,
   };
 }

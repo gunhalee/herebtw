@@ -7,7 +7,7 @@ import { formatBucketedDistance } from "../../lib/geo/location-buckets";
 import thumbsUpImage from "../thumbs_up.png";
 import { uiColors, uiSpacing } from "../../lib/ui/tokens";
 
-export type PostListItemProps = PostListItemModel;
+type PostListItemProps = PostListItemModel;
 
 export function PostListItem({
   id,
@@ -17,7 +17,6 @@ export function PostListItem({
   relativeTime,
   agreeCount,
   myAgree,
-  canReport,
   isHighlighted,
   isMenuOpen,
   onToggleAgree,
@@ -25,7 +24,6 @@ export function PostListItem({
   onCloseMenu,
   onSelectReport,
 }: PostListItemProps & {
-  onOpen?: (postId: string) => void;
   isMenuOpen?: boolean;
   onToggleAgree?: (postId: string) => void;
   onOpenMenu?: (postId: string) => void;

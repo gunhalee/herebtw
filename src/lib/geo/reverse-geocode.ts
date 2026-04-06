@@ -30,7 +30,7 @@ type NominatimFeatureCollection = {
   }>;
 };
 
-export type ReverseGeocodeResult = {
+type ReverseGeocodeResult = {
   administrativeDongName: string;
   administrativeDongCode: string;
   sidoName: string | null;

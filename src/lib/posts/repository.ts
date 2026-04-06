@@ -1,13 +1,11 @@
 import type {
   PostComposeState,
-  PostDetailState,
   PostListState,
   PostLocation,
 } from "../../types/post";
 import { quantizeLocationTo100MeterGrid } from "../geo/location-buckets";
-import { getSupabaseServerClient } from "../supabase/server";
+import { hasSupabaseServerConfig } from "../supabase/config";
 import {
-  supabaseDelete,
   supabaseInsert,
   supabaseRpc,
   supabaseSelect,
@@ -15,7 +13,6 @@ import {
 } from "../supabase/rest";
 import { formatRelativeTime } from "../utils/datetime";
 import {
-  getMockPostDetailState,
   getMockPostListState,
   toggleMockPostAgree,
 } from "./mock-data";
@@ -262,6 +259,26 @@ function buildFeedMetricsContext(input: {
   };
 }
 
+function clampFeedLimit(limit?: number) {
+  return Math.min(Math.max(limit ?? 10, 1), 50);
+}
+
+function createPostListState(input: {
+  items: PostListState["items"];
+  nextCursor: string | null;
+  sort: PostListState["sort"];
+}): PostListState {
+  return {
+    items: input.items,
+    nextCursor: input.nextCursor,
+    loading: false,
+    loadingMore: false,
+    empty: input.items.length === 0,
+    errorMessage: null,
+    sort: input.sort,
+  };
+}
+
 function logFeedMetrics(
   level: "info" | "warn" | "error",
   event: string,
@@ -287,6 +304,18 @@ function isFeedRpcRow(row: NearbyPostRow) {
     typeof row.agree_count === "number" &&
     typeof row.my_agree === "boolean" &&
     typeof row.can_report === "boolean"
+  );
+}
+
+function getFeedRpcFallbackReason(
+  rows: NearbyPostRow[] | null,
+  fallbackReason: FeedFallbackReason | null,
+) {
+  return (
+    fallbackReason ??
+    (rows && rows.length > 0 && !isFeedRpcRow(rows[0]!)
+      ? "unexpected_rpc_shape"
+      : null)
   );
 }
 
@@ -412,20 +441,96 @@ function buildPostListItems(
   }));
 }
 
+function buildRpcPostListItems(
+  posts: NearbyPostRow[],
+  options?: {
+    myAgree?: boolean;
+    canReport?: boolean;
+    fallbackCanReport?: boolean;
+  },
+) {
+  return posts.map((post) => ({
+    id: post.id,
+    content: post.content,
+    administrativeDongName: post.administrative_dong_name,
+    distanceMeters: post.distance_meters,
+    relativeTime: formatRelativeTime(post.created_at),
+    agreeCount: post.agree_count ?? 0,
+    myAgree: options?.myAgree ?? post.my_agree ?? false,
+    canReport:
+      options?.canReport ??
+      post.can_report ??
+      options?.fallbackCanReport ??
+      true,
+    isHighlighted: false,
+  }));
+}
+
+function getNextNearbyFeedCursor(posts: NearbyPostRow[], hasMore: boolean) {
+  if (!hasMore || posts.length === 0) {
+    return null;
+  }
+
+  return encodePostListCursor(posts[posts.length - 1]!);
+}
+
+function getNextGlobalFeedCursor(
+  posts: Array<Pick<PostRow, "id" | "created_at">>,
+  hasMore: boolean,
+) {
+  if (!hasMore || posts.length === 0) {
+    return null;
+  }
+
+  return encodeGlobalPostListCursor(posts[posts.length - 1]!);
+}
+
+function normalizeGlobalFeedCursor(cursor: string | undefined) {
+  return (
+    decodePostListCursor(cursor) ??
+    (() => {
+      const legacyCursor = decodeGlobalPostListCursor(cursor);
+
+      if (!legacyCursor) {
+        return null;
+      }
+
+      return {
+        distanceMeters: FEED_RPC_DISTANCE_FALLBACK_METERS,
+        createdAt: legacyCursor.createdAt,
+        postId: legacyCursor.postId,
+      } satisfies PostListCursor;
+    })()
+  );
+}
+
+function resolveLegacyGlobalCursor(
+  rawCursor: string | undefined,
+  cursor: PostListCursor | null,
+) {
+  return (
+    decodeGlobalPostListCursor(rawCursor) ??
+    (cursor
+      ? {
+          createdAt: cursor.createdAt,
+          postId: cursor.postId,
+        }
+      : null)
+  );
+}
+
 export async function loadPostsListRepository(input: {
   anonymousDeviceId?: string;
   limit?: number;
   cursor?: string;
   location?: PostLocation;
 }) {
-  const supabase = getSupabaseServerClient();
-
-  if (!supabase) {
+  if (!hasSupabaseServerConfig()) {
     return getMockPostListState();
   }
 
   const startedAtMs = getMonotonicTimeMs();
-  const limit = Math.min(Math.max(input.limit ?? 10, 1), 50);
+  const limit = clampFeedLimit(input.limit);
   const cursor = decodePostListCursor(input.cursor);
   const sort: PostListState["sort"] = input.location ? "distance" : "latest";
   const metricsContext = buildFeedMetricsContext({
@@ -443,11 +548,10 @@ export async function loadPostsListRepository(input: {
     location: input.location,
   });
   const rpcPosts = rpcResult.rows;
-  const fallbackReason =
-    rpcResult.fallbackReason ??
-    (rpcPosts && rpcPosts.length > 0 && !isFeedRpcRow(rpcPosts[0]!)
-      ? "unexpected_rpc_shape"
-      : null);
+  const fallbackReason = getFeedRpcFallbackReason(
+    rpcPosts,
+    rpcResult.fallbackReason,
+  );
 
   if (rpcPosts && !fallbackReason) {
     const visibleRpcPosts = input.anonymousDeviceId
@@ -459,17 +563,9 @@ export async function loadPostsListRepository(input: {
     const selectedPosts = hasMore
       ? visibleRpcPosts.slice(0, limit)
       : visibleRpcPosts;
-    const items = selectedPosts.map((post) => ({
-      id: post.id,
-      content: post.content,
-      administrativeDongName: post.administrative_dong_name,
-      distanceMeters: post.distance_meters,
-      relativeTime: formatRelativeTime(post.created_at),
-      agreeCount: post.agree_count ?? 0,
-      myAgree: post.my_agree ?? false,
-      canReport: post.can_report ?? Boolean(input.anonymousDeviceId),
-      isHighlighted: false,
-    }));
+    const items = buildRpcPostListItems(selectedPosts, {
+      fallbackCanReport: Boolean(input.anonymousDeviceId),
+    });
 
     logFeedMetrics("info", "load_posts_list", {
       ...metricsContext,
@@ -480,18 +576,11 @@ export async function loadPostsListRepository(input: {
       totalDurationMs: getElapsedTimeMs(startedAtMs),
     });
 
-    return {
+    return createPostListState({
       items,
-      nextCursor:
-        hasMore && selectedPosts.length > 0
-          ? encodePostListCursor(selectedPosts[selectedPosts.length - 1]!)
-          : null,
-      loading: false,
-      loadingMore: false,
-      empty: items.length === 0,
-      errorMessage: null,
+      nextCursor: getNextNearbyFeedCursor(selectedPosts, hasMore),
       sort,
-    };
+    });
   }
 
   if (fallbackReason) {
@@ -540,18 +629,11 @@ export async function loadPostsListRepository(input: {
     totalDurationMs: getElapsedTimeMs(startedAtMs),
   });
 
-  return {
+  return createPostListState({
     items,
-    nextCursor:
-      hasMore && selectedPosts.length > 0
-        ? encodePostListCursor(selectedPosts[selectedPosts.length - 1])
-        : null,
-    loading: false,
-    loadingMore: false,
-    empty: items.length === 0,
-    errorMessage: null,
+    nextCursor: getNextNearbyFeedCursor(selectedPosts, hasMore),
     sort,
-  };
+  });
 }
 
 export async function syncNearbyFeedRepository(input: {
@@ -560,10 +642,7 @@ export async function syncNearbyFeedRepository(input: {
   limit?: number;
   location: PostLocation;
 }) {
-  const limit = Math.min(
-    Math.max(input.limit ?? input.loadedPostIds?.length ?? 10, 1),
-    50,
-  );
+  const limit = clampFeedLimit(input.limit ?? input.loadedPostIds?.length);
   const snapshot = await loadPostsListRepository({
     anonymousDeviceId: input.anonymousDeviceId,
     limit,
@@ -597,9 +676,7 @@ export async function loadPostEngagementSnapshotRepository(input: {
     };
   }
 
-  const supabase = getSupabaseServerClient();
-
-  if (!supabase) {
+  if (!hasSupabaseServerConfig()) {
     const itemMap = new Map(
       getMockPostListState().items.map((item) => [item.id, item]),
     );
@@ -648,34 +725,19 @@ export async function loadGlobalPostsListRepository(input: {
   limit?: number;
   cursor?: string;
 }) {
-  const supabase = getSupabaseServerClient();
-
-  if (!supabase) {
+  if (!hasSupabaseServerConfig()) {
     const mockState = getMockPostListState();
 
-    return {
-      ...mockState,
+    return createPostListState({
+      items: mockState.items,
+      nextCursor: mockState.nextCursor,
       sort: "latest" as const,
-    };
+    });
   }
 
   const startedAtMs = getMonotonicTimeMs();
-  const limit = Math.min(Math.max(input.limit ?? 10, 1), 50);
-  const cursor =
-    decodePostListCursor(input.cursor) ??
-    (() => {
-      const legacyCursor = decodeGlobalPostListCursor(input.cursor);
-
-      if (!legacyCursor) {
-        return null;
-      }
-
-      return {
-        distanceMeters: FEED_RPC_DISTANCE_FALLBACK_METERS,
-        createdAt: legacyCursor.createdAt,
-        postId: legacyCursor.postId,
-      } satisfies PostListCursor;
-    })();
+  const limit = clampFeedLimit(input.limit);
+  const cursor = normalizeGlobalFeedCursor(input.cursor);
   const metricsContext = buildFeedMetricsContext({
     scope: "global",
     cursor,
@@ -687,26 +749,18 @@ export async function loadGlobalPostsListRepository(input: {
     cursor,
   });
   const rpcPosts = rpcResult.rows;
-  const fallbackReason =
-    rpcResult.fallbackReason ??
-    (rpcPosts && rpcPosts.length > 0 && !isFeedRpcRow(rpcPosts[0]!)
-      ? "unexpected_rpc_shape"
-      : null);
+  const fallbackReason = getFeedRpcFallbackReason(
+    rpcPosts,
+    rpcResult.fallbackReason,
+  );
 
   if (rpcPosts && !fallbackReason) {
     const hasMore = rpcPosts.length > limit;
     const selectedPosts = hasMore ? rpcPosts.slice(0, limit) : rpcPosts;
-    const items = selectedPosts.map((post) => ({
-      id: post.id,
-      content: post.content,
-      administrativeDongName: post.administrative_dong_name,
-      distanceMeters: post.distance_meters,
-      relativeTime: formatRelativeTime(post.created_at),
-      agreeCount: post.agree_count ?? 0,
+    const items = buildRpcPostListItems(selectedPosts, {
       myAgree: false,
       canReport: false,
-      isHighlighted: false,
-    }));
+    });
 
     logFeedMetrics("info", "load_posts_list", {
       ...metricsContext,
@@ -717,18 +771,11 @@ export async function loadGlobalPostsListRepository(input: {
       totalDurationMs: getElapsedTimeMs(startedAtMs),
     });
 
-    return {
+    return createPostListState({
       items,
-      nextCursor:
-        hasMore && selectedPosts.length > 0
-          ? encodePostListCursor(selectedPosts[selectedPosts.length - 1]!)
-          : null,
-      loading: false,
-      loadingMore: false,
-      empty: items.length === 0,
-      errorMessage: null,
+      nextCursor: getNextNearbyFeedCursor(selectedPosts, hasMore),
       sort: "latest" as const,
-    };
+    });
   }
 
   if (fallbackReason) {
@@ -739,13 +786,7 @@ export async function loadGlobalPostsListRepository(input: {
     });
   }
 
-  const legacyCursor = decodeGlobalPostListCursor(input.cursor) ??
-    (cursor
-      ? {
-          createdAt: cursor.createdAt,
-          postId: cursor.postId,
-        }
-      : null);
+  const legacyCursor = resolveLegacyGlobalCursor(input.cursor, cursor);
   const cursorFilter = legacyCursor
     ? `&or=(created_at.lt.${encodeURIComponent(legacyCursor.createdAt)},and(created_at.eq.${encodeURIComponent(legacyCursor.createdAt)},id.gt.${legacyCursor.postId}))`
     : "";
@@ -771,87 +812,15 @@ export async function loadGlobalPostsListRepository(input: {
     totalDurationMs: getElapsedTimeMs(startedAtMs),
   });
 
-  return {
+  return createPostListState({
     items,
-    nextCursor:
-      hasMore && selectedPosts.length > 0
-        ? encodeGlobalPostListCursor(selectedPosts[selectedPosts.length - 1])
-        : null,
-    loading: false,
-    loadingMore: false,
-    empty: items.length === 0,
-    errorMessage: null,
+    nextCursor: getNextGlobalFeedCursor(selectedPosts, hasMore),
     sort: "latest" as const,
-  };
-}
-
-export async function loadPostDetailRepository(input: {
-  postId: string;
-  anonymousDeviceId?: string;
-}) {
-  const supabase = getSupabaseServerClient();
-
-  if (!supabase) {
-    const mock = getMockPostDetailState(input.postId);
-    return input.postId === mock.postId ? mock : null;
-  }
-
-  if (!isUuid(input.postId)) {
-    return null;
-  }
-
-  const device = input.anonymousDeviceId
-    ? await ensureDeviceIdentity(input.anonymousDeviceId)
-    : null;
-  const postRows =
-    (await supabaseSelect<PostRow[]>(
-      `posts?select=id,content,administrative_dong_name,created_at,delete_expires_at,author_device_id,latitude,longitude&status=eq.active&id=eq.${input.postId}&limit=1`,
-    )) ?? [];
-  const post = postRows[0];
-
-  if (!post) {
-    return null;
-  }
-
-  const engagementRows =
-    (await supabaseSelect<PostEngagementRow[]>(
-      `post_engagement_view?select=post_id,agree_count&post_id=eq.${post.id}`,
-    )) ?? [];
-  const myReactionRows =
-    device
-      ? ((await supabaseSelect<ReactionRow[]>(
-          `post_reactions?select=id,post_id,device_id,reaction_type&device_id=eq.${device.id}&reaction_type=eq.agree&post_id=eq.${post.id}`,
-        )) ?? [])
-      : [];
-
-  const deleteRemainingSeconds = Math.max(
-    0,
-    Math.floor(
-      (new Date(post.delete_expires_at).getTime() - Date.now()) / 1000,
-    ),
-  );
-
-  return {
-    postId: post.id,
-    open: true,
-    loading: false,
-    content: post.content,
-    administrativeDongName: post.administrative_dong_name,
-    distanceMeters: 0,
-    relativeTime: formatRelativeTime(post.created_at),
-    agreeCount: Number(engagementRows[0]?.agree_count ?? 0),
-    myAgree: myReactionRows.length > 0,
-    canReport: true,
-    canDelete: deleteRemainingSeconds > 0,
-    deleteRemainingSeconds,
-    errorMessage: null,
-  };
+  });
 }
 
 export async function syncDeviceRepository(anonymousDeviceId: string) {
-  const supabase = getSupabaseServerClient();
-
-  if (!supabase) {
+  if (!hasSupabaseServerConfig()) {
     return {
       mode: "mock" as const,
       device: {
@@ -874,9 +843,7 @@ export async function createPostRepository(
   location: PostLocation,
   anonymousDeviceId?: string,
 ) {
-  const supabase = getSupabaseServerClient();
-
-  if (!supabase || !anonymousDeviceId) {
+  if (!hasSupabaseServerConfig() || !anonymousDeviceId) {
     return {
       mode: "mock" as const,
       state,
@@ -889,12 +856,10 @@ export async function createPostRepository(
     throw new Error("Failed to ensure device identity.");
   }
 
+  const quantizedLocation = quantizeLocationTo100MeterGrid(location);
   const rows = await supabaseInsert<PostRow[]>(
     "posts?select=id,content,administrative_dong_name,created_at,delete_expires_at",
-    (() => {
-      const quantizedLocation = quantizeLocationTo100MeterGrid(location);
-
-      return {
+    {
       author_device_id: device.id,
       content: state.content.trim(),
       administrative_dong_name: state.resolvedDongName,
@@ -903,8 +868,7 @@ export async function createPostRepository(
       longitude: quantizedLocation.longitude,
       latitude_bucket_100m: quantizedLocation.latitudeBucket100m,
       longitude_bucket_100m: quantizedLocation.longitudeBucket100m,
-    };
-    })(),
+    },
   );
 
   return {
@@ -918,9 +882,7 @@ export async function toggleAgreeRepository(
   postId: string,
   anonymousDeviceId?: string,
 ) {
-  const supabase = getSupabaseServerClient();
-
-  if (!supabase || !anonymousDeviceId) {
+  if (!hasSupabaseServerConfig() || !anonymousDeviceId) {
     return {
       mode: "mock" as const,
       ...toggleMockPostAgree(postId),
@@ -942,45 +904,12 @@ export async function toggleAgreeRepository(
   };
 }
 
-export async function deletePostRepository(
-  postId: string,
-  anonymousDeviceId?: string,
-) {
-  const supabase = getSupabaseServerClient();
-
-  if (!supabase || !anonymousDeviceId) {
-    return {
-      mode: "mock" as const,
-      postId,
-    };
-  }
-
-  const device = await ensureDeviceIdentity(anonymousDeviceId);
-
-  if (!device) {
-    throw new Error("Failed to ensure device identity.");
-  }
-
-  const deletedPost = await supabaseRpc<PostRow>("soft_delete_post", {
-    target_post_id: postId,
-    requester_device_id: device.id,
-  });
-
-  return {
-    mode: "supabase" as const,
-    postId,
-    deletedPost,
-  };
-}
-
 export async function reportPostRepository(
   postId: string,
   reasonCode: string,
   anonymousDeviceId?: string,
 ) {
-  const supabase = getSupabaseServerClient();
-
-  if (!supabase || !anonymousDeviceId) {
+  if (!hasSupabaseServerConfig() || !anonymousDeviceId) {
     return {
       mode: "mock" as const,
       postId,
