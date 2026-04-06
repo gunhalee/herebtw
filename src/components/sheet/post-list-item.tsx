@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import type { PostListItem as PostListItemModel } from "../../types/post";
+import { formatAdministrativeAreaNameForHomeDisplay } from "../../lib/geo/format-administrative-area";
 import { formatBucketedDistance } from "../../lib/geo/location-buckets";
 import thumbsUpImage from "../thumbs_up.png";
 import { uiColors, uiSpacing } from "../../lib/ui/tokens";
@@ -36,6 +37,8 @@ export function PostListItem({
     ? "#eef0f3"
     : "rgba(255, 255, 255, 0.96)";
   const agreeButtonBorder = myAgree ? "#d3d7dd" : uiColors.border;
+  const displayAdministrativeDongName =
+    formatAdministrativeAreaNameForHomeDisplay(administrativeDongName);
 
   return (
     <article
@@ -128,7 +131,7 @@ export function PostListItem({
                   fontWeight: 500,
                 }}
               >
-                {administrativeDongName}
+                {displayAdministrativeDongName}
               </span>
               <span
                 style={{

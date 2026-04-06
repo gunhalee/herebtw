@@ -51,6 +51,30 @@ const SIDO_SHORT_NAMES = new Map<string, string>([
   ["제주도", "제주"],
 ]);
 
+const PROVINCE_LEVEL_SIDO_NAMES = new Set<string>([
+  "경기",
+  "경기도",
+  "강원",
+  "강원도",
+  "강원특별자치도",
+  "충북",
+  "충청북도",
+  "충남",
+  "충청남도",
+  "전북",
+  "전라북도",
+  "전북특별자치도",
+  "전남",
+  "전라남도",
+  "경북",
+  "경상북도",
+  "경남",
+  "경상남도",
+  "제주",
+  "제주도",
+  "제주특별자치도",
+]);
+
 export function shortenSidoName(sidoName: string | null | undefined) {
   if (!sidoName) {
     return null;
@@ -91,4 +115,20 @@ export function formatAdministrativeAreaName(input: {
     input.sigunguName,
     normalizeAdministrativeDongName(input.administrativeDongName),
   ]).join(" ");
+}
+
+export function formatAdministrativeAreaNameForHomeDisplay(
+  administrativeAreaName: string,
+) {
+  const parts = nonEmptyParts(administrativeAreaName);
+
+  if (parts.length <= 1) {
+    return administrativeAreaName.trim();
+  }
+
+  if (!PROVINCE_LEVEL_SIDO_NAMES.has(parts[0]!)) {
+    return parts.join(" ");
+  }
+
+  return parts.slice(1).join(" ");
 }
