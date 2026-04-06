@@ -206,12 +206,15 @@ input {
   border-radius: 999px;
   box-shadow: 0 12px 24px rgba(17, 24, 39, 0.08);
   color: #111827;
-  font-size: 12px;
+  font-size: clamp(11px, 3vw, 12px);
   font-weight: 600;
-  line-height: 1.4;
-  max-width: 240px;
-  padding: 10px 14px;
+  line-height: 1.35;
+  margin: 0 auto;
+  max-width: min(100%, 320px);
+  padding: 9px 12px;
   text-align: center;
+  width: fit-content;
+  word-break: keep-all;
 }
 
 .compose-dong-flashcard {
