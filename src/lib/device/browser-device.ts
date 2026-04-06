@@ -93,6 +93,7 @@ export async function ensureRegisteredBrowserDevice(options?: { force?: boolean 
       anonymousDeviceId,
     }),
     path: "/api/device/register",
+    timeoutErrorMessage: "기기 등록이 지연되고 있어요. 다시 시도해주세요.",
   });
   persistAnonymousDeviceId(data.device.anonymousDeviceId);
   markBrowserDeviceRegistered();

@@ -1,5 +1,5 @@
 import { fail, ok } from "../../../../../../lib/api/response";
-import { toggleAgreeAction } from "../../../../../../actions/posts/toggle-agree";
+import { toggleAgreeState } from "../../../../../../lib/posts/mutations";
 
 type ToggleAgreeRequest = {
   anonymousDeviceId: string;
@@ -25,7 +25,7 @@ export async function POST(request: Request, context: Context) {
     );
   }
 
-  const result = await toggleAgreeAction(postId, body.anonymousDeviceId);
+  const result = await toggleAgreeState(postId, body.anonymousDeviceId);
 
   return ok({
     postId,

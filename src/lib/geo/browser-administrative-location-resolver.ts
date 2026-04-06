@@ -5,6 +5,8 @@ import type { AdministrativeLocationSnapshot } from "./browser-administrative-lo
 export type ResolvedAdministrativeLocation = PostLocation &
   AdministrativeLocationSnapshot & {
     countryCode: string | null;
+    formattedAdministrativeAreaName: string;
+    locationResolutionToken: string | null;
   };
 
 type ResolveLocationResponse = {
@@ -20,6 +22,8 @@ export async function resolveAdministrativeLocation(
       location,
     }),
     path: "/api/location/resolve",
+    timeoutErrorMessage:
+      "현재 위치 확인이 지연되고 있어요. 다시 시도해주세요.",
   });
 
   return data.location;

@@ -1,4 +1,6 @@
 import { fail, ok } from "../../../../lib/api/response";
+import { formatAdministrativeAreaName } from "../../../../lib/geo/format-administrative-area";
+import { createLocationResolutionToken } from "../../../../lib/geo/location-resolution-token";
 import {
   isValidCoordinateInput,
   resolveLocationFromCoordinates,
@@ -26,8 +28,23 @@ export async function POST(request: Request) {
 
   try {
     const location = await resolveLocationFromCoordinates(body.location);
+    const formattedAdministrativeAreaName = formatAdministrativeAreaName({
+      sidoName: location.sidoName,
+      sigunguName: location.sigunguName,
+      administrativeDongName: location.administrativeDongName,
+    });
 
-    return ok({ location });
+    return ok({
+      location: {
+        ...location,
+        formattedAdministrativeAreaName,
+        locationResolutionToken: createLocationResolutionToken({
+          administrativeDongCode: location.administrativeDongCode,
+          formattedAdministrativeAreaName,
+          location: body.location,
+        }),
+      },
+    });
   } catch (error) {
     const message =
       error instanceof Error && error.message === "INVALID_COORDINATES"

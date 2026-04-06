@@ -122,8 +122,6 @@ export async function syncNearbyHomeFeed({
     if (data.newItemsCount === 0) {
       setPendingFeedSnapshot(null);
     }
-  } catch {
-    return;
   } finally {
     syncInFlightRef.current = false;
   }
@@ -180,8 +178,6 @@ export async function syncHomePostEngagement({
         excludedPostIds: new Set(agreePendingPostIdsRef.current),
       }),
     }));
-  } catch {
-    return;
   } finally {
     engagementSyncInFlightRef.current = false;
   }

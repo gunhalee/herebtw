@@ -1,5 +1,5 @@
 import { ok } from "../../../../../lib/api/response";
-import { reportPostAction } from "../../../../../actions/posts/report-post";
+import { reportPostRepository } from "../../../../../lib/posts/repository";
 
 type ReportPostRequest = {
   anonymousDeviceId: string;
@@ -15,7 +15,7 @@ type Context = {
 export async function POST(request: Request, context: Context) {
   const { postId } = await context.params;
   const body = (await request.json()) as ReportPostRequest;
-  const result = await reportPostAction(
+  const result = await reportPostRepository(
     postId,
     body.reasonCode,
     body.anonymousDeviceId,
@@ -23,6 +23,6 @@ export async function POST(request: Request, context: Context) {
 
   return ok({
     postId: result.postId,
-    reported: result.ok,
+    reported: true,
   });
 }

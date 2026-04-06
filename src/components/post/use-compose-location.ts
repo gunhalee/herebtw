@@ -70,6 +70,9 @@ export function useComposeLocation({
               ...coordinates,
               ...cachedAdministrativeLocation,
               countryCode: null,
+              formattedAdministrativeAreaName:
+                cachedAdministrativeLocation.administrativeDongName,
+              locationResolutionToken: null,
             },
             {
               verified: false,

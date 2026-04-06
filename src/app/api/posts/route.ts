@@ -1,11 +1,11 @@
-import { createPostAction } from "../../../actions/posts/create-post";
 import { fail, ok } from "../../../lib/api/response";
 import { formatAdministrativeAreaName } from "../../../lib/geo/format-administrative-area";
+import { verifyLocationResolutionToken } from "../../../lib/geo/location-resolution-token";
 import {
   isValidCoordinateInput,
   resolveLocationFromCoordinates,
 } from "../../../lib/geo/resolve-location";
-import type { PostComposeState } from "../../../types/post";
+import { createPost } from "../../../lib/posts/mutations";
 
 type CreatePostRequest = {
   anonymousDeviceId?: string;
@@ -14,10 +14,51 @@ type CreatePostRequest = {
     latitude: number;
     longitude: number;
   };
+  locationResolutionToken?: string | null;
 };
 
+async function resolveAdministrativeLocationForPost(input: {
+  location: {
+    latitude: number;
+    longitude: number;
+  };
+  locationResolutionToken?: string | null;
+}) {
+  const verifiedLocation = verifyLocationResolutionToken(
+    input.locationResolutionToken,
+    input.location,
+  );
+
+  if (verifiedLocation) {
+    return verifiedLocation;
+  }
+
+  const resolvedLocation = await resolveLocationFromCoordinates(input.location);
+
+  return {
+    administrativeDongCode: resolvedLocation.administrativeDongCode,
+    formattedAdministrativeAreaName: formatAdministrativeAreaName({
+      sidoName: resolvedLocation.sidoName,
+      sigunguName: resolvedLocation.sigunguName,
+      administrativeDongName: resolvedLocation.administrativeDongName,
+    }),
+  };
+}
+
 export async function POST(request: Request) {
-  const body = (await request.json()) as CreatePostRequest;
+  let body: CreatePostRequest;
+
+  try {
+    body = (await request.json()) as CreatePostRequest;
+  } catch {
+    return fail(
+      {
+        code: "INVALID_REQUEST",
+        message: "요청 형식을 다시 확인해주세요.",
+      },
+      400,
+    );
+  }
 
   if (!body.anonymousDeviceId?.trim()) {
     return fail(
@@ -39,10 +80,13 @@ export async function POST(request: Request) {
     );
   }
 
-  let resolvedLocation;
+  let resolvedAdministrativeLocation;
 
   try {
-    resolvedLocation = await resolveLocationFromCoordinates(body.location);
+    resolvedAdministrativeLocation = await resolveAdministrativeLocationForPost({
+      location: body.location,
+      locationResolutionToken: body.locationResolutionToken,
+    });
   } catch {
     return fail(
       {
@@ -53,50 +97,26 @@ export async function POST(request: Request) {
     );
   }
 
-  const composeState: PostComposeState = {
+  const result = await createPost({
+    anonymousDeviceId: body.anonymousDeviceId,
     content: body.content ?? "",
-    charCount: body.content?.trim().length ?? 0,
-    submitting: false,
-    locationResolved: true,
-    resolvedDongName: formatAdministrativeAreaName({
-      sidoName: resolvedLocation.sidoName,
-      sigunguName: resolvedLocation.sigunguName,
-      administrativeDongName: resolvedLocation.administrativeDongName,
-    }),
-    resolvedDongCode: resolvedLocation.administrativeDongCode,
-    duplicateBlocked: false,
-    errorMessage: null,
-  };
+    location: body.location,
+    resolvedDongCode: resolvedAdministrativeLocation.administrativeDongCode,
+    resolvedDongName:
+      resolvedAdministrativeLocation.formattedAdministrativeAreaName,
+  });
 
-  const result = await createPostAction(
-    composeState,
-    body.location,
-    body.anonymousDeviceId,
-  );
-
-  if (!result.ok || !result.detailState) {
+  if (!result.ok) {
     return fail(
       {
-        code: result.nextState.duplicateBlocked
-          ? "DUPLICATE_CONTENT"
-          : "VALIDATION_ERROR",
-        message:
-          result.nextState.errorMessage ??
-          "글을 등록하지 못했습니다. 잠시 후 다시 시도해주세요.",
+        code: result.code,
+        message: result.message,
       },
       400,
     );
   }
 
   return ok({
-    post: {
-      id: result.detailState.postId,
-      content: result.detailState.content,
-      administrativeDongName: result.detailState.administrativeDongName,
-      createdAt: new Date().toISOString(),
-      deleteExpiresAt: new Date(
-        Date.now() + result.detailState.deleteRemainingSeconds * 1000,
-      ).toISOString(),
-    },
+    post: result.post,
   });
 }

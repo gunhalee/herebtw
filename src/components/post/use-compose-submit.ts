@@ -96,8 +96,10 @@ export function useComposeSubmit({
             latitude: resolvedLocation.latitude,
             longitude: resolvedLocation.longitude,
           },
+          locationResolutionToken: resolvedLocation.locationResolutionToken,
         }),
         path: "/api/posts",
+        timeoutErrorMessage: "글 등록이 지연되고 있어요. 다시 시도해주세요.",
       });
 
       if (onSuccess) {

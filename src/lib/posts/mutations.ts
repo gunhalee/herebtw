@@ -1,4 +1,4 @@
-import type { PostComposeState, PostLocation } from "../../types/post";
+import type { PostLocation } from "../../types/post";
 import { logAbuseEvent } from "../abuse/log-event";
 import { checkDuplicateContent } from "../abuse/duplicate-check";
 import { createPostRepository, toggleAgreeRepository } from "./repository";
@@ -6,94 +6,75 @@ import { validatePostContent } from "./validators";
 
 const DUPLICATE_SEED_CONTENTS: string[] = [];
 
-type CreatedPostDetail = {
-  postId: string | null;
-  open: boolean;
-  loading: boolean;
+type CreatePostInput = {
+  anonymousDeviceId?: string;
   content: string;
-  administrativeDongName: string;
-  distanceMeters: number;
-  relativeTime: string;
-  agreeCount: number;
-  myAgree: boolean;
-  canReport: boolean;
-  canDelete: boolean;
-  deleteRemainingSeconds: number;
-  errorMessage: string | null;
+  location: PostLocation;
+  resolvedDongCode: string | null;
+  resolvedDongName: string;
 };
 
-export async function createPostDraft(
-  state: PostComposeState,
-  location: PostLocation,
-  anonymousDeviceId?: string,
-): Promise<{
-  ok: boolean;
-  nextState: PostComposeState;
-  detailState?: CreatedPostDetail;
-}> {
-  const validation = validatePostContent(state.content);
+type CreatePostResult =
+  | {
+      ok: true;
+      post: {
+        administrativeDongName: string;
+        content: string;
+        createdAt: string;
+        deleteExpiresAt: string;
+        id: string;
+      };
+    }
+  | {
+      code: "DUPLICATE_CONTENT" | "VALIDATION_ERROR";
+      message: string;
+      ok: false;
+    };
+
+export async function createPost(
+  input: CreatePostInput,
+): Promise<CreatePostResult> {
+  const validation = validatePostContent(input.content);
 
   if (!validation.valid) {
     return {
+      code: "VALIDATION_ERROR",
+      message: validation.message ?? "내용을 다시 확인해주세요.",
       ok: false,
-      nextState: {
-        ...state,
-        errorMessage: validation.message,
-      },
     };
   }
 
   const duplicateBlocked = checkDuplicateContent(
-    state.content,
+    input.content,
     DUPLICATE_SEED_CONTENTS,
   );
 
   if (duplicateBlocked) {
     await logAbuseEvent("duplicate_content", {
-      content: state.content,
+      content: input.content,
     });
 
     return {
+      code: "DUPLICATE_CONTENT",
+      message: "같은 내용의 글이 이미 있어요. 내용을 조금 수정해 다시 시도해주세요.",
       ok: false,
-      nextState: {
-        ...state,
-        duplicateBlocked: true,
-        errorMessage: "같은 내용의 글이 이미 있어요. 내용을 조금 수정해 다시 시도해주세요.",
-      },
     };
   }
 
-  const repositoryResult = await createPostRepository(
-    state,
-    location,
-    anonymousDeviceId,
-  );
+  const repositoryResult = await createPostRepository(input);
+  const createdAt = repositoryResult.post?.created_at ?? new Date().toISOString();
+  const deleteExpiresAt =
+    repositoryResult.post?.delete_expires_at ??
+    new Date(Date.now() + 180 * 1000).toISOString();
 
   return {
     ok: true,
-    nextState: {
-      ...state,
-      submitting: false,
-      duplicateBlocked: false,
-      errorMessage: null,
-    },
-    detailState: {
-      postId:
-        repositoryResult.mode === "supabase" && repositoryResult.post
-          ? repositoryResult.post.id
-          : "post_new",
-      open: true,
-      loading: false,
-      content: state.content.trim(),
-      administrativeDongName: state.resolvedDongName ?? "알 수 없는 동네",
-      distanceMeters: 120,
-      relativeTime: "방금 전",
-      agreeCount: 0,
-      myAgree: false,
-      canReport: true,
-      canDelete: true,
-      deleteRemainingSeconds: 180,
-      errorMessage: null,
+    post: {
+      id: repositoryResult.post?.id ?? "post_new",
+      content: input.content.trim(),
+      administrativeDongName: input.resolvedDongName,
+      createdAt,
+      deleteExpiresAt,
     },
   };
 }

@@ -104,6 +104,8 @@ export function useHomeFeedLifecycle({
       feedSortMode === "nearby" &&
       feedLocation !== null,
     intervalMs: 20000,
+    label: "nearby_feed_sync",
+    maxIntervalMs: 60000,
     onTick: (isCancelled) =>
       syncNearbyHomeFeed({
         isCancelled,
@@ -114,11 +116,14 @@ export function useHomeFeedLifecycle({
         setPostListState,
         setPendingFeedSnapshot,
       }),
+    runImmediately: false,
   });
 
   useVisiblePolling({
     enabled: dataSourceMode === "supabase",
-    intervalMs: 5000,
+    intervalMs: 10000,
+    label: "post_engagement_sync",
+    maxIntervalMs: 30000,
     onTick: (isCancelled) =>
       syncHomePostEngagement({
         isCancelled,
@@ -128,5 +133,6 @@ export function useHomeFeedLifecycle({
         agreePendingPostIdsRef,
         setPostListState,
       }),
+    runImmediately: false,
   });
 }

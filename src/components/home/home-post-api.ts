@@ -24,6 +24,8 @@ export async function toggleHomePostAgree(
       anonymousDeviceId,
     }),
     path: `/api/posts/${postId}/agree/toggle`,
+    timeoutErrorMessage:
+      "맞아요 반영이 지연되고 있어요. 다시 시도해주세요.",
   });
 }
 
@@ -39,6 +41,8 @@ export async function reportHomePost(
       reasonCode,
     }),
     path: `/api/posts/${postId}/report`,
+    timeoutErrorMessage:
+      "신고 접수가 지연되고 있어요. 다시 시도해주세요.",
   });
 
   if (!data.reported) {
