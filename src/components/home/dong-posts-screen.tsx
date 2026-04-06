@@ -362,6 +362,24 @@ export function DongPostsScreen({
   const shouldAnimatePlaceholderDong =
     animateComposeDongPlaceholder || composeCta.location === PLACEHOLDER_DONG_LABEL;
 
+  function handleScreenClickCapture(event: React.MouseEvent<HTMLElement>) {
+    if (!activeMenuPostId) {
+      return;
+    }
+
+    const target = event.target;
+
+    if (!(target instanceof HTMLElement)) {
+      return;
+    }
+
+    if (target.closest(`[data-post-id="${activeMenuPostId}"]`)) {
+      return;
+    }
+
+    onCloseMenu?.();
+  }
+
   useEffect(() => {
     if (!scrollTargetPostId || !scrollContainerRef.current) {
       return;
@@ -405,6 +423,7 @@ export function DongPostsScreen({
   return (
     <section
       aria-label="nearby-posts-screen"
+      onClickCapture={handleScreenClickCapture}
       style={{
         background: "#ffffff",
         display: "flex",
@@ -619,6 +638,7 @@ export function DongPostsScreen({
                 cursor: "default",
                 inset: 0,
                 padding: 0,
+                pointerEvents: "none",
                 position: "absolute",
                 zIndex: 1,
               }}
