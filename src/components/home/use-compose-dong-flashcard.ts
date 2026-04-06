@@ -16,7 +16,6 @@ const PLACEHOLDER_DONG_CANDIDATES = [
   "역삼1동",
   "연남동",
   "망원1동",
-  "성수2가3동",
   "서교동",
   "삼청동",
   "정자동",

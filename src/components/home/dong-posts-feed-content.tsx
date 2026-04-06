@@ -97,7 +97,7 @@ export function DongPostsFeedContent({
       {state.nextCursor && !state.loadingMore ? (
         <DongPostsLoadMoreButton onLoadMore={onLoadMore} />
       ) : null}
-      {state.loadingMore ? <LoadingState label="더 불러오는 중" /> : null}
+      {state.loadingMore ? <LoadingState label="불러오는 중" /> : null}
     </div>
   );
 }

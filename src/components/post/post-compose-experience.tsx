@@ -189,7 +189,7 @@ export function PostComposeExperience({
               id="sheet-post-content"
               maxLength={100}
               onChange={(event) => handleChangeContent(event.target.value)}
-              placeholder="지금 이 주변에서 느낀 점을 남겨보세요."
+              placeholder="지금 여기에서 글을 남겨보세요."
               style={{
                 background: "transparent",
                 border: "none",

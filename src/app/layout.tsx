@@ -7,7 +7,7 @@ const geist = Geist({subsets:['latin'],variable:'--font-sans'});
 
 export const metadata = {
   title: "여기 근데",
-  description: "동네 이슈를 가볍게 공유하는 MVP",
+  description: "한마디 할게요",
 };
 
 export const viewport = {

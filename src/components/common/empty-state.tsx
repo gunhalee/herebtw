@@ -37,15 +37,17 @@ export function EmptyState({
       >
         {title}
       </h3>
-      <p
-        style={{
-          color: uiColors.textMuted,
-          fontSize: uiTypography.body.fontSize,
-          margin: 0,
-        }}
-      >
-        {description}
-      </p>
+      {description ? (
+        <p
+          style={{
+            color: uiColors.textMuted,
+            fontSize: uiTypography.body.fontSize,
+            margin: 0,
+          }}
+        >
+          {description}
+        </p>
+      ) : null}
     </section>
   );
 }
