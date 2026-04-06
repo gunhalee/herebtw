@@ -366,7 +366,7 @@ export function DongPostsScreen({
       <header
         style={{
           background:
-            "linear-gradient(180deg, rgba(247,244,236,0.98), rgba(247,244,236,0.92))",
+            "linear-gradient(180deg, rgba(255,255,255,0.98), rgba(255,255,255,0.94))",
           backdropFilter: "blur(10px)",
           boxShadow: "0 8px 14px rgba(17, 24, 39, 0.08)",
           display: "flex",

@@ -301,6 +301,7 @@ input {
 }
 
 #sheet-post-content {
+  overscroll-behavior-y: contain;
   touch-action: pan-y;
 }
 

@@ -154,6 +154,7 @@ export function PostComposeExperience({
     "neutral" | "danger"
   >("neutral");
   const deviceRegistrationPromiseRef = useRef<Promise<string> | null>(null);
+  const touchScrollStartYRef = useRef<number | null>(null);
   const isSheet = presentation === "sheet";
   const [sheetPortalReady, setSheetPortalReady] = useState(false);
   const [sheetViewportLayout, setSheetViewportLayout] =
@@ -210,27 +211,88 @@ export function PostComposeExperience({
     body.style.width = "100%";
     body.style.overscrollBehavior = "none";
 
-    const shouldAllowNativeScroll = (target: EventTarget | null) =>
-      target instanceof Element && target.closest("#sheet-post-content") !== null;
+    const resolveScrollableTextarea = (target: EventTarget | null) => {
+      if (!(target instanceof Element)) {
+        return null;
+      }
+
+      const textarea = target.closest("#sheet-post-content");
+
+      return textarea instanceof HTMLTextAreaElement ? textarea : null;
+    };
+
+    const canScrollTextarea = (
+      textarea: HTMLTextAreaElement,
+      deltaY: number,
+    ) => {
+      if (textarea.scrollHeight <= textarea.clientHeight + 1) {
+        return false;
+      }
+
+      const scrollTop = textarea.scrollTop;
+      const maxScrollTop = textarea.scrollHeight - textarea.clientHeight;
+      const isScrollingDown = deltaY > 0;
+      const isScrollingUp = deltaY < 0;
+      const isAtTop = scrollTop <= 0;
+      const isAtBottom = scrollTop >= maxScrollTop - 1;
+
+      if ((isAtTop && isScrollingDown) || (isAtBottom && isScrollingUp)) {
+        return false;
+      }
+
+      return true;
+    };
+
+    const handleTouchStart = (event: TouchEvent) => {
+      if (event.touches.length !== 1) {
+        touchScrollStartYRef.current = null;
+        return;
+      }
+
+      touchScrollStartYRef.current = event.touches[0]?.clientY ?? null;
+    };
 
     const handleTouchMove = (event: TouchEvent) => {
-      if (!shouldAllowNativeScroll(event.target)) {
+      const textarea = resolveScrollableTextarea(event.target);
+
+      if (!textarea || event.touches.length !== 1) {
+        event.preventDefault();
+        return;
+      }
+
+      const currentTouchY = event.touches[0]?.clientY ?? null;
+      const previousTouchY = touchScrollStartYRef.current;
+
+      if (currentTouchY === null || previousTouchY === null) {
+        touchScrollStartYRef.current = currentTouchY;
+        return;
+      }
+
+      const deltaY = currentTouchY - previousTouchY;
+      touchScrollStartYRef.current = currentTouchY;
+
+      if (!canScrollTextarea(textarea, deltaY)) {
         event.preventDefault();
       }
     };
 
     const handleWheel = (event: WheelEvent) => {
-      if (!shouldAllowNativeScroll(event.target)) {
+      const textarea = resolveScrollableTextarea(event.target);
+
+      if (!textarea || !canScrollTextarea(textarea, event.deltaY)) {
         event.preventDefault();
       }
     };
 
+    document.addEventListener("touchstart", handleTouchStart, { passive: true });
     document.addEventListener("touchmove", handleTouchMove, { passive: false });
     document.addEventListener("wheel", handleWheel, { passive: false });
 
     return () => {
+      document.removeEventListener("touchstart", handleTouchStart);
       document.removeEventListener("touchmove", handleTouchMove);
       document.removeEventListener("wheel", handleWheel);
+      touchScrollStartYRef.current = null;
       root.classList.remove("compose-sheet-open");
       body.classList.remove("compose-sheet-open");
       root.style.overflow = previousRootOverflow;
@@ -732,6 +794,7 @@ export function PostComposeExperience({
                 lineHeight: 1.55,
                 minHeight: 0,
                 outline: "none",
+                overscrollBehavior: "contain",
                 overflowY: "auto",
                 padding: `${uiSpacing.sm} 0 calc(${uiSpacing.xl} + 26px)`,
                 resize: "none",
