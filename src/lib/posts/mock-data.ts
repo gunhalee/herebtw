@@ -3,13 +3,14 @@ import type {
   PostListItem,
   PostListState,
 } from "../../types/post";
+
 type MockPostRecord = PostListItem;
 
 const MOCK_POSTS: MockPostRecord[] = [
   {
     id: "post_1",
     content: "횡단보도 신호가 너무 짧아요.",
-    administrativeDongName: "역삼1동",
+    administrativeDongName: "서울 강남구 역삼1동",
     distanceMeters: 280,
     relativeTime: "3분 전",
     agreeCount: 18,
@@ -20,7 +21,7 @@ const MOCK_POSTS: MockPostRecord[] = [
   {
     id: "post_2",
     content: "밤길 가로등이 너무 어두워요. 골목 입구가 잘 안 보여요.",
-    administrativeDongName: "역삼2동",
+    administrativeDongName: "서울 강남구 역삼2동",
     distanceMeters: 610,
     relativeTime: "12분 전",
     agreeCount: 9,
@@ -30,8 +31,8 @@ const MOCK_POSTS: MockPostRecord[] = [
   },
   {
     id: "post_3",
-    content: "쓰레기통이 없어서 사람들이 그냥 두고 가네요.",
-    administrativeDongName: "논현1동",
+    content: "쓰레기통이 없어서 사람들이 그냥 두고 가요.",
+    administrativeDongName: "서울 강남구 논현1동",
     distanceMeters: 820,
     relativeTime: "27분 전",
     agreeCount: 4,
@@ -42,7 +43,7 @@ const MOCK_POSTS: MockPostRecord[] = [
   {
     id: "post_4",
     content: "불법주정차가 많아서 버스가 자주 막혀요.",
-    administrativeDongName: "서교동",
+    administrativeDongName: "서울 마포구 서교동",
     distanceMeters: 1240,
     relativeTime: "8분 전",
     agreeCount: 13,
@@ -52,8 +53,8 @@ const MOCK_POSTS: MockPostRecord[] = [
   },
   {
     id: "post_5",
-    content: "공원 쪽 조명이 조금 더 밝아지면 좋겠어요.",
-    administrativeDongName: "연남동",
+    content: "공원 쪽 조명만 조금 더 밝아지면 좋겠어요.",
+    administrativeDongName: "서울 마포구 연남동",
     distanceMeters: 1580,
     relativeTime: "21분 전",
     agreeCount: 7,
@@ -64,7 +65,7 @@ const MOCK_POSTS: MockPostRecord[] = [
   {
     id: "post_6",
     content: "출근 시간 버스 배차가 조금만 더 촘촘하면 좋겠어요.",
-    administrativeDongName: "송도1동",
+    administrativeDongName: "인천 연수구 송도1동",
     distanceMeters: 2350,
     relativeTime: "17분 전",
     agreeCount: 11,

@@ -88,16 +88,22 @@ export function HomeScreen({
   const [reportSubmitting, setReportSubmitting] = useState(false);
   const [feedLocation, setFeedLocation] = useState<PostLocation | null>(null);
   const [locationResolving, setLocationResolving] = useState(false);
+  const [feedSortMode, setFeedSortMode] = useState<"nearby" | "global">(
+    initialAppShellState.readOnlyMode ? "global" : "nearby",
+  );
 
   const currentDongName =
     appShellState.selectedDongName ??
     (locationResolving ? "행정동 확인 중" : null) ??
-    postListState.items[0]?.administrativeDongName ??
+    (appShellState.readOnlyMode ? null : postListState.items[0]?.administrativeDongName) ??
     "우리 동네";
   const runtimeNotice =
     dataSourceMode === "mock"
       ? "Supabase 환경변수가 아직 설정되지 않아 샘플 데이터를 보여주고 있어요."
       : null;
+
+  const obscureGlobalFallbackList =
+    appShellState.readOnlyMode && feedSortMode === "global";
 
   async function fetchPostsList(
     anonymousDeviceId: string,
@@ -165,6 +171,7 @@ export function HomeScreen({
           setAppShellState((current) => ({
             ...current,
             permissionMode: "granted",
+            readOnlyMode: false,
             selectedDongCode: resolvedLocation.administrativeDongCode,
             selectedDongName: resolvedLocation.administrativeDongName,
           }));
@@ -187,6 +194,7 @@ export function HomeScreen({
           setAppShellState((current) => ({
             ...current,
             permissionMode: "granted",
+            readOnlyMode: false,
             selectedDongCode: null,
             selectedDongName: null,
           }));
@@ -216,11 +224,13 @@ export function HomeScreen({
             });
         } catch (error) {
           if (!cancelled) {
+            const permissionMode = getPermissionMode(error);
             setFeedLocation(null);
             setLocationResolving(false);
             setAppShellState((current) => ({
               ...current,
-              permissionMode: getPermissionMode(error),
+              permissionMode,
+              readOnlyMode: permissionMode === "denied",
             }));
           }
         }
@@ -229,6 +239,7 @@ export function HomeScreen({
           return;
         }
 
+        setFeedSortMode(resolvedCoordinates ? "nearby" : "global");
         const data = await fetchPostsList(anonymousDeviceId, resolvedCoordinates);
 
         if (cancelled) {
@@ -307,6 +318,7 @@ export function HomeScreen({
         errorMessage: null,
       }));
 
+      setFeedSortMode(feedLocation ? "nearby" : "global");
       const data = await fetchPostsList(
         anonymousDeviceId,
         feedLocation ?? undefined,
@@ -493,6 +505,7 @@ export function HomeScreen({
         onConfirmReport={handleReport}
         onLoadMore={handleLoadMore}
         onOpenMenu={handleOpenMenu}
+        obscurePosts={obscureGlobalFallbackList}
         onSelectReport={handleSelectReport}
         onToggleAgree={handleToggleAgree}
         reportSubmitting={reportSubmitting}

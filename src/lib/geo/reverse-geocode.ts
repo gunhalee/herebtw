@@ -1,3 +1,5 @@
+import { resolveAdministrativeDongMapping } from "./administrative-dong-mapping";
+import { normalizeAdministrativeDongName } from "./format-administrative-area";
 import { findKnownDongCode } from "./known-dong-codes";
 
 type NominatimFeatureCollection = {
@@ -42,6 +44,18 @@ function firstNonEmpty(...values: Array<string | null | undefined>) {
   }
 
   return null;
+}
+
+function pickAdministrativeDongName(...values: Array<string | null | undefined>) {
+  const normalizedValues = values
+    .map((value) => (value ? normalizeAdministrativeDongName(value) : null))
+    .filter((value): value is string => Boolean(value));
+
+  return (
+    normalizedValues.find((value) => /(읍|면|동)$/.test(value)) ??
+    normalizedValues[0] ??
+    null
+  );
 }
 
 function createSyntheticDongCode(input: {
@@ -91,17 +105,29 @@ export async function reverseGeocode(
     throw new Error("Reverse geocoding returned no address data.");
   }
 
-  const administrativeDongName = firstNonEmpty(
+  const administrativeDongCandidateNames = [
     geocoding.admin?.level8,
     geocoding.district,
     geocoding.locality,
     geocoding.suburb,
     geocoding.quarter,
     geocoding.neighbourhood,
-  );
+  ];
   const sigunguName = firstNonEmpty(geocoding.admin?.level6, geocoding.county);
-  const sidoName = firstNonEmpty(geocoding.admin?.level4, geocoding.city, geocoding.state);
+  const sidoName = firstNonEmpty(
+    geocoding.admin?.level4,
+    geocoding.city,
+    geocoding.state,
+  );
   const countryCode = geocoding.country_code?.toLowerCase() ?? null;
+  const mappedAdministrativeDong = resolveAdministrativeDongMapping({
+    sidoName,
+    sigunguName,
+    candidateNames: administrativeDongCandidateNames,
+  });
+  const administrativeDongName =
+    mappedAdministrativeDong?.administrativeDongName ??
+    pickAdministrativeDongName(...administrativeDongCandidateNames);
 
   if (!administrativeDongName) {
     throw new Error("Reverse geocoding could not determine a dong name.");
@@ -110,6 +136,7 @@ export async function reverseGeocode(
   return {
     administrativeDongName,
     administrativeDongCode:
+      mappedAdministrativeDong?.administrativeDongCode ??
       findKnownDongCode(administrativeDongName) ??
       createSyntheticDongCode({
         countryCode,

@@ -1,11 +1,13 @@
 "use client";
 
+import type { CSSProperties } from "react";
 import Image from "next/image";
 import { EmptyState } from "../common/empty-state";
 import { ErrorState } from "../common/error-state";
 import { LoadingState } from "../common/loading-state";
 import penWritingImage from "../pen_writing.png";
 import { PostListItem } from "../sheet/post-list-item";
+import { homeScreenCopy } from "../../lib/content/home-copy";
 import type { PostListState } from "../../types/post";
 import { uiColors, uiRadius, uiSpacing } from "../../lib/ui/tokens";
 
@@ -16,6 +18,7 @@ export type DongPostsScreenProps = {
   activeMenuPostId?: string | null;
   activeReportPostId?: string | null;
   reportSubmitting?: boolean;
+  obscurePosts?: boolean;
   onCompose?: () => void;
   onLoadMore?: () => void;
   onToggleAgree?: (postId?: string) => void;
@@ -33,6 +36,7 @@ export function DongPostsScreen({
   activeMenuPostId,
   activeReportPostId,
   reportSubmitting = false,
+  obscurePosts = false,
   onCompose,
   onLoadMore,
   onToggleAgree,
@@ -44,6 +48,8 @@ export function DongPostsScreen({
 }: DongPostsScreenProps) {
   const activeReportPost =
     state.items.find((item) => item.id === activeReportPostId) ?? null;
+  const shouldObscurePosts =
+    obscurePosts && !state.loading && !state.errorMessage && !state.empty;
 
   return (
     <section
@@ -73,33 +79,60 @@ export function DongPostsScreen({
       >
         <div
           style={{
-            alignItems: "baseline",
+            alignItems: "center",
             display: "flex",
-            flexWrap: "wrap",
-            gap: uiSpacing.sm,
+            flexDirection: "column",
+            gap: uiSpacing.xs,
+            textAlign: "center",
           }}
         >
           <h1
             style={{
+              alignItems: "baseline",
               color: uiColors.textStrong,
-              fontSize: "26px",
+              display: "flex",
+              flexWrap: "wrap",
+              fontSize: "22px",
               fontWeight: 700,
+              gap: uiSpacing.sm,
               letterSpacing: "-0.03em",
               lineHeight: 1.1,
               margin: 0,
             }}
           >
-            여기 근데
+            <span>{homeScreenCopy.title}</span>
+            <span
+              style={{
+                color: uiColors.textMuted,
+              }}
+            >
+              {homeScreenCopy.titleSuffix}
+            </span>
           </h1>
-          <span
-            style={{
-              color: uiColors.textMuted,
-              fontSize: "12px",
-              fontWeight: 600,
-            }}
-          >
-            동네 이야기만 빠르게
-          </span>
+          {homeScreenCopy.eyebrow ? (
+            <span
+              style={{
+                color: uiColors.textStrong,
+                fontSize: "11px",
+                fontWeight: 700,
+                letterSpacing: "0.02em",
+              }}
+            >
+              {homeScreenCopy.eyebrow}
+            </span>
+          ) : null}
+          {homeScreenCopy.subtitle ? (
+            <p
+              style={{
+                color: uiColors.textMuted,
+                fontSize: "13px",
+                lineHeight: 1.5,
+                margin: 0,
+              }}
+            >
+              {homeScreenCopy.subtitle}
+            </p>
+          ) : null}
         </div>
 
         {runtimeNotice ? (
@@ -129,18 +162,41 @@ export function DongPostsScreen({
               "0 14px 28px rgba(116, 94, 62, 0.14), inset 0 1px 0 rgba(255, 255, 255, 0.9)",
             color: uiColors.textStrong,
             cursor: "pointer",
-            display: "flex",
+            display: "grid",
             fontSize: "14px",
             fontWeight: 700,
-            gap: uiSpacing.sm,
-            justifyContent: "space-between",
+            gridTemplateColumns: "30px 1fr 30px",
             padding: `${uiSpacing.lg} ${uiSpacing.xl}`,
             transform: "translateY(-1px)",
             width: "100%",
           }}
           type="button"
         >
-          <span>{`여기 ${currentDongName} 근데`}</span>
+          <span
+            aria-hidden="true"
+            style={{
+              display: "inline-block",
+              height: "30px",
+              width: "30px",
+            }}
+          />
+          <span
+            style={{
+              textAlign: "center",
+            }}
+          >
+            {(() => {
+              const cta = homeScreenCopy.composeCta(currentDongName);
+
+              return (
+                <>
+                  <span style={{ color: uiColors.textMuted }}>{cta.prefix}</span>
+                  <span>{cta.location}</span>
+                  <span style={{ color: uiColors.textMuted }}>{cta.suffix}</span>
+                </>
+              );
+            })()}
+          </span>
           <span
             style={{
               alignItems: "center",
@@ -150,6 +206,7 @@ export function DongPostsScreen({
               display: "inline-flex",
               height: "30px",
               justifyContent: "center",
+              justifySelf: "end",
               padding: "0 8px",
               width: "30px",
             }}
@@ -202,53 +259,86 @@ export function DongPostsScreen({
 
           {state.loading ? <LoadingState label="목록을 불러오는 중" /> : null}
           {state.errorMessage ? <ErrorState message={state.errorMessage} /> : null}
-          {state.empty ? (
-            <EmptyState
-              title="아직 이 동네 첫 글이 없어요"
-              description="지금 있는 곳의 첫 번째 이야기를 남겨 보세요."
-            />
-          ) : (
+
+          <div
+            className="global-feed-preview"
+            data-obscured={shouldObscurePosts ? "true" : undefined}
+            style={{
+              position: "relative",
+            }}
+          >
             <div
-              style={{
-                display: "flex",
-                flexDirection: "column",
-                gap: uiSpacing.md,
-              }}
+              className={shouldObscurePosts ? "global-feed-preview__content" : undefined}
             >
-              {state.items.map((item) => (
-                <PostListItem
-                  key={item.id}
-                  {...item}
-                  isMenuOpen={item.id === activeMenuPostId}
-                  onCloseMenu={onCloseMenu}
-                  onOpenMenu={onOpenMenu}
-                  onSelectReport={onSelectReport}
-                  onToggleAgree={onToggleAgree}
+              {state.empty ? (
+                <EmptyState
+                  title={homeScreenCopy.emptyTitle}
+                  description={homeScreenCopy.emptyDescription}
                 />
-              ))}
-              {state.nextCursor && !state.loadingMore ? (
-                <button
-                  onClick={onLoadMore}
+              ) : (
+                <div
                   style={{
-                    appearance: "none",
-                    background: "#fffdfa",
-                    border: "1px solid #e7dccd",
-                    borderRadius: uiRadius.pill,
-                    color: uiColors.textStrong,
-                    cursor: "pointer",
-                    fontSize: "14px",
-                    fontWeight: 700,
-                    padding: `${uiSpacing.md} ${uiSpacing.lg}`,
-                    width: "100%",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: uiSpacing.md,
                   }}
-                  type="button"
                 >
-                  더 보기
-                </button>
-              ) : null}
-              {state.loadingMore ? <LoadingState label="더 불러오는 중" /> : null}
+                  {state.items.map((item, index) => (
+                    <div
+                      key={item.id}
+                      className={
+                        shouldObscurePosts ? "global-feed-preview__card" : undefined
+                      }
+                      style={
+                        shouldObscurePosts
+                          ? ({
+                              animationDelay: `${index * 120}ms`,
+                            } satisfies CSSProperties)
+                          : undefined
+                      }
+                    >
+                      <PostListItem
+                        {...item}
+                        isMenuOpen={item.id === activeMenuPostId}
+                        onCloseMenu={onCloseMenu}
+                        onOpenMenu={onOpenMenu}
+                        onSelectReport={onSelectReport}
+                        onToggleAgree={onToggleAgree}
+                      />
+                    </div>
+                  ))}
+                  {state.nextCursor && !state.loadingMore ? (
+                    <button
+                      onClick={onLoadMore}
+                      style={{
+                        appearance: "none",
+                        background: "#fffdfa",
+                        border: "1px solid #e7dccd",
+                        borderRadius: uiRadius.pill,
+                        color: uiColors.textStrong,
+                        cursor: "pointer",
+                        fontSize: "14px",
+                        fontWeight: 700,
+                        padding: `${uiSpacing.md} ${uiSpacing.lg}`,
+                        width: "100%",
+                      }}
+                      type="button"
+                    >
+                      더 보기
+                    </button>
+                  ) : null}
+                  {state.loadingMore ? <LoadingState label="더 불러오는 중" /> : null}
+                </div>
+              )}
             </div>
-          )}
+            {shouldObscurePosts ? (
+              <div aria-hidden="true" className="global-feed-preview__veil">
+                <div className="global-feed-preview__badge">
+                  위치를 허용하면 근처 글을 읽을 수 있어요
+                </div>
+              </div>
+            ) : null}
+          </div>
         </div>
       </div>
 

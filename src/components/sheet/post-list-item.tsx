@@ -116,19 +116,28 @@ export function PostListItem({
           >
             <p
               style={{
-                color: uiColors.textMuted,
                 flex: 1,
                 fontSize: "11px",
-                fontWeight: 400,
                 lineHeight: 1.35,
                 margin: 0,
               }}
             >
-              여기{" "}
-              <span style={{ color: uiColors.textStrong }}>
+              <span
+                style={{
+                  color: uiColors.textStrong,
+                  fontWeight: 500,
+                }}
+              >
                 {administrativeDongName}
               </span>
-              {` 근데 · ${formatBucketedDistance(distanceMeters)} · ${relativeTime}`}
+              <span
+                style={{
+                  color: uiColors.textMuted,
+                  fontWeight: 400,
+                }}
+              >
+                {` · ${formatBucketedDistance(distanceMeters)} · ${relativeTime}`}
+              </span>
             </p>
 
             <button

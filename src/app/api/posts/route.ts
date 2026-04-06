@@ -1,5 +1,6 @@
 import { createPostAction } from "../../../actions/posts/create-post";
 import { fail, ok } from "../../../lib/api/response";
+import { formatAdministrativeAreaName } from "../../../lib/geo/format-administrative-area";
 import {
   isValidCoordinateInput,
   resolveLocationFromCoordinates,
@@ -61,7 +62,11 @@ export async function POST(request: Request) {
     charCount: body.content.trim().length,
     submitting: false,
     locationResolved: true,
-    resolvedDongName: resolvedLocation.administrativeDongName,
+    resolvedDongName: formatAdministrativeAreaName({
+      sidoName: resolvedLocation.sidoName,
+      sigunguName: resolvedLocation.sigunguName,
+      administrativeDongName: resolvedLocation.administrativeDongName,
+    }),
     resolvedDongCode: resolvedLocation.administrativeDongCode,
     cooldownRemainingSeconds: 0,
     duplicateBlocked: false,
