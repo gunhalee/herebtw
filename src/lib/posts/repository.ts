@@ -266,6 +266,15 @@ function clampFeedLimit(limit?: number) {
   return Math.min(Math.max(limit ?? 10, 1), 50);
 }
 
+function sliceFeedRows<T>(rows: T[], limit: number) {
+  const hasMore = rows.length > limit;
+
+  return {
+    hasMore,
+    selectedRows: hasMore ? rows.slice(0, limit) : rows,
+  };
+}
+
 function createPostListState(input: {
   items: PostListState["items"];
   nextCursor: string | null;
@@ -300,6 +309,36 @@ function logFeedMetrics(
   }
 
   console.info(prefix, payload);
+}
+
+function logLoadedFeedMetrics(input: {
+  metricsContext: ReturnType<typeof buildFeedMetricsContext>;
+  path: "rpc" | "legacy";
+  itemCount: number;
+  hasMore: boolean;
+  rpcDurationMs: number;
+  startedAtMs: number;
+}) {
+  logFeedMetrics("info", "load_posts_list", {
+    ...input.metricsContext,
+    path: input.path,
+    itemCount: input.itemCount,
+    hasMore: input.hasMore,
+    rpcDurationMs: input.rpcDurationMs,
+    totalDurationMs: getElapsedTimeMs(input.startedAtMs),
+  });
+}
+
+function logFeedFallbackMetrics(input: {
+  metricsContext: ReturnType<typeof buildFeedMetricsContext>;
+  fallbackReason: FeedFallbackReason;
+  rpcDurationMs: number;
+}) {
+  logFeedMetrics("warn", "legacy_fallback", {
+    ...input.metricsContext,
+    fallbackReason: input.fallbackReason,
+    rpcDurationMs: input.rpcDurationMs,
+  });
 }
 
 function isFeedRpcRow(row: NearbyPostRow) {
@@ -374,6 +413,56 @@ async function loadPostsFeedRpc(input: {
     throw error;
   }
 }
+
+type PrepareFeedLoadParams = {
+  scope: FeedScope;
+  anonymousDeviceId?: string;
+  limit?: number;
+  cursor?: string;
+  location?: PostLocation;
+  decodeCursor?: (cursor: string | undefined) => PostListCursor | null;
+};
+
+async function prepareFeedLoad({
+  scope,
+  anonymousDeviceId,
+  limit: rawLimit,
+  cursor: rawCursor,
+  location,
+  decodeCursor = decodePostListCursor,
+}: PrepareFeedLoadParams) {
+  const startedAtMs = getMonotonicTimeMs();
+  const limit = clampFeedLimit(rawLimit);
+  const cursor = decodeCursor(rawCursor);
+  const metricsContext = buildFeedMetricsContext({
+    scope,
+    anonymousDeviceId,
+    cursor,
+    limit,
+    location,
+  });
+  const rpcResult = await loadPostsFeedRpc({
+    scope,
+    anonymousDeviceId,
+    limit,
+    cursor,
+    location,
+  });
+
+  return {
+    startedAtMs,
+    limit,
+    cursor,
+    metricsContext,
+    rpcResult,
+    fallbackReason: getFeedRpcFallbackReason(
+      rpcResult.rows,
+      rpcResult.fallbackReason,
+    ),
+  };
+}
+
+type PreparedFeedLoadResult = Awaited<ReturnType<typeof prepareFeedLoad>>;
 
 async function loadEngagementRows(postIds: string[]) {
   if (postIds.length === 0) {
@@ -526,6 +615,201 @@ function resolveLegacyGlobalCursor(
   );
 }
 
+function sliceNearbyRpcRows(
+  rows: NearbyPostRow[],
+  limit: number,
+  filterReportedPosts: boolean,
+) {
+  const visibleRows = filterReportedPosts
+    ? rows.filter((post) => post.can_report !== false)
+    : rows;
+  const hasMore =
+    visibleRows.length > limit ||
+    (rows.length > limit && visibleRows.length === limit);
+
+  return {
+    hasMore,
+    selectedRows: hasMore ? visibleRows.slice(0, limit) : visibleRows,
+  };
+}
+
+function createLoggedPostListState(input: {
+  metricsContext: ReturnType<typeof buildFeedMetricsContext>;
+  path: "rpc" | "legacy";
+  items: PostListState["items"];
+  hasMore: boolean;
+  rpcDurationMs: number;
+  startedAtMs: number;
+  sort: PostListState["sort"];
+  nextCursor: string | null;
+}) {
+  logLoadedFeedMetrics({
+    metricsContext: input.metricsContext,
+    path: input.path,
+    itemCount: input.items.length,
+    hasMore: input.hasMore,
+    rpcDurationMs: input.rpcDurationMs,
+    startedAtMs: input.startedAtMs,
+  });
+
+  return createPostListState({
+    items: input.items,
+    nextCursor: input.nextCursor,
+    sort: input.sort,
+  });
+}
+
+function buildNearbyRpcPostListState(input: {
+  preparedLoad: PreparedFeedLoadResult;
+  anonymousDeviceId?: string;
+  sort: PostListState["sort"];
+}) {
+  const rpcRows = input.preparedLoad.rpcResult.rows;
+
+  if (!rpcRows || input.preparedLoad.fallbackReason) {
+    return null;
+  }
+
+  const { hasMore, selectedRows } = sliceNearbyRpcRows(
+    rpcRows,
+    input.preparedLoad.limit,
+    Boolean(input.anonymousDeviceId),
+  );
+  const items = buildRpcPostListItems(selectedRows, {
+    fallbackCanReport: Boolean(input.anonymousDeviceId),
+  });
+
+  return createLoggedPostListState({
+    metricsContext: input.preparedLoad.metricsContext,
+    path: "rpc",
+    items,
+    hasMore,
+    rpcDurationMs: input.preparedLoad.rpcResult.durationMs,
+    startedAtMs: input.preparedLoad.startedAtMs,
+    sort: input.sort,
+    nextCursor: getNextNearbyFeedCursor(selectedRows, hasMore),
+  });
+}
+
+async function loadLegacyNearbyPostListState(input: {
+  preparedLoad: PreparedFeedLoadResult;
+  anonymousDeviceId?: string;
+  location?: PostLocation;
+  sort: PostListState["sort"];
+}) {
+  const device = input.anonymousDeviceId
+    ? await ensureDeviceIdentity(input.anonymousDeviceId)
+    : null;
+  const posts =
+    (await supabaseRpc<NearbyPostRow[]>("list_nearby_posts", {
+      viewer_latitude: input.location?.latitude ?? null,
+      viewer_longitude: input.location?.longitude ?? null,
+      cursor_distance_meters: input.preparedLoad.cursor?.distanceMeters ?? null,
+      cursor_created_at: input.preparedLoad.cursor?.createdAt ?? null,
+      cursor_post_id: input.preparedLoad.cursor?.postId ?? null,
+      result_limit: input.preparedLoad.limit + 1,
+    })) ?? [];
+  const { hasMore, selectedRows } = sliceFeedRows(
+    posts,
+    input.preparedLoad.limit,
+  );
+  const postIds = selectedRows.map((post) => post.id);
+  const [engagementRows, myReactionRows, myReportRows] = await Promise.all([
+    loadEngagementRows(postIds),
+    loadMyAgreeRows(device?.id, postIds),
+    loadMyReportRows(device?.id, postIds),
+  ]);
+  const reportedPostIdSet = new Set(myReportRows.map((row) => row.post_id));
+  const visiblePosts = selectedRows.filter((post) => !reportedPostIdSet.has(post.id));
+  const visiblePostIdSet = new Set(visiblePosts.map((post) => post.id));
+  const items = buildPostListItems(visiblePosts, {
+    viewerLocation: input.location,
+    engagementRows: engagementRows.filter((row) => visiblePostIdSet.has(row.post_id)),
+    myReactionRows: myReactionRows.filter((row) => visiblePostIdSet.has(row.post_id)),
+  });
+
+  return createLoggedPostListState({
+    metricsContext: input.preparedLoad.metricsContext,
+    path: "legacy",
+    items,
+    hasMore,
+    rpcDurationMs: input.preparedLoad.rpcResult.durationMs,
+    startedAtMs: input.preparedLoad.startedAtMs,
+    sort: input.sort,
+    nextCursor: getNextNearbyFeedCursor(selectedRows, hasMore),
+  });
+}
+
+function buildGlobalRpcPostListState(input: {
+  preparedLoad: PreparedFeedLoadResult;
+}) {
+  const rpcRows = input.preparedLoad.rpcResult.rows;
+
+  if (!rpcRows || input.preparedLoad.fallbackReason) {
+    return null;
+  }
+
+  const { hasMore, selectedRows } = sliceFeedRows(
+    rpcRows,
+    input.preparedLoad.limit,
+  );
+  const items = buildRpcPostListItems(selectedRows, {
+    myAgree: false,
+    canReport: false,
+    distanceMetersOverride: GLOBAL_FEED_DISTANCE_SENTINEL_METERS,
+  });
+
+  return createLoggedPostListState({
+    metricsContext: input.preparedLoad.metricsContext,
+    path: "rpc",
+    items,
+    hasMore,
+    rpcDurationMs: input.preparedLoad.rpcResult.durationMs,
+    startedAtMs: input.preparedLoad.startedAtMs,
+    sort: "latest",
+    nextCursor: getNextNearbyFeedCursor(selectedRows, hasMore),
+  });
+}
+
+async function loadLegacyGlobalPostListState(input: {
+  rawCursor: string | undefined;
+  preparedLoad: PreparedFeedLoadResult;
+}) {
+  const legacyCursor = resolveLegacyGlobalCursor(
+    input.rawCursor,
+    input.preparedLoad.cursor,
+  );
+  const cursorFilter = legacyCursor
+    ? `&or=(created_at.lt.${encodeURIComponent(legacyCursor.createdAt)},and(created_at.eq.${encodeURIComponent(legacyCursor.createdAt)},id.gt.${legacyCursor.postId}))`
+    : "";
+  const posts =
+    (await supabaseSelect<PostRow[]>(
+      `posts?select=id,content,administrative_dong_name,created_at,delete_expires_at,latitude,longitude&status=eq.active&order=created_at.desc&order=id.asc&limit=${input.preparedLoad.limit + 1}${cursorFilter}`,
+    )) ?? [];
+  const { hasMore, selectedRows } = sliceFeedRows(
+    posts,
+    input.preparedLoad.limit,
+  );
+  const postIds = selectedRows.map((post) => post.id);
+  const engagementRows = await loadEngagementRows(postIds);
+  const items = buildPostListItems(selectedRows, {
+    engagementRows,
+    canReport: false,
+    distanceMetersOverride: GLOBAL_FEED_DISTANCE_SENTINEL_METERS,
+  });
+
+  return createLoggedPostListState({
+    metricsContext: input.preparedLoad.metricsContext,
+    path: "legacy",
+    items,
+    hasMore,
+    rpcDurationMs: input.preparedLoad.rpcResult.durationMs,
+    startedAtMs: input.preparedLoad.startedAtMs,
+    sort: "latest",
+    nextCursor: getNextGlobalFeedCursor(selectedRows, hasMore),
+  });
+}
+
 export async function loadPostsListRepository(input: {
   anonymousDeviceId?: string;
   limit?: number;
@@ -536,109 +820,36 @@ export async function loadPostsListRepository(input: {
     return getMockPostListState();
   }
 
-  const startedAtMs = getMonotonicTimeMs();
-  const limit = clampFeedLimit(input.limit);
-  const cursor = decodePostListCursor(input.cursor);
+  const preparedLoad = await prepareFeedLoad({
+    scope: "nearby",
+    anonymousDeviceId: input.anonymousDeviceId,
+    limit: input.limit,
+    cursor: input.cursor,
+    location: input.location,
+  });
   const sort: PostListState["sort"] = input.location ? "distance" : "latest";
-  const metricsContext = buildFeedMetricsContext({
-    scope: "nearby",
+  const rpcState = buildNearbyRpcPostListState({
+    preparedLoad,
     anonymousDeviceId: input.anonymousDeviceId,
-    cursor,
-    limit,
-    location: input.location,
+    sort,
   });
-  const rpcResult = await loadPostsFeedRpc({
-    scope: "nearby",
-    anonymousDeviceId: input.anonymousDeviceId,
-    limit,
-    cursor,
-    location: input.location,
-  });
-  const rpcPosts = rpcResult.rows;
-  const fallbackReason = getFeedRpcFallbackReason(
-    rpcPosts,
-    rpcResult.fallbackReason,
-  );
 
-  if (rpcPosts && !fallbackReason) {
-    const visibleRpcPosts = input.anonymousDeviceId
-      ? rpcPosts.filter((post) => post.can_report !== false)
-      : rpcPosts;
-    const hasMore =
-      visibleRpcPosts.length > limit ||
-      (rpcPosts.length > limit && visibleRpcPosts.length === limit);
-    const selectedPosts = hasMore
-      ? visibleRpcPosts.slice(0, limit)
-      : visibleRpcPosts;
-    const items = buildRpcPostListItems(selectedPosts, {
-      fallbackCanReport: Boolean(input.anonymousDeviceId),
-    });
+  if (rpcState) {
+    return rpcState;
+  }
 
-    logFeedMetrics("info", "load_posts_list", {
-      ...metricsContext,
-      path: "rpc",
-      itemCount: items.length,
-      hasMore,
-      rpcDurationMs: rpcResult.durationMs,
-      totalDurationMs: getElapsedTimeMs(startedAtMs),
-    });
-
-    return createPostListState({
-      items,
-      nextCursor: getNextNearbyFeedCursor(selectedPosts, hasMore),
-      sort,
+  if (preparedLoad.fallbackReason) {
+    logFeedFallbackMetrics({
+      metricsContext: preparedLoad.metricsContext,
+      fallbackReason: preparedLoad.fallbackReason,
+      rpcDurationMs: preparedLoad.rpcResult.durationMs,
     });
   }
 
-  if (fallbackReason) {
-    logFeedMetrics("warn", "legacy_fallback", {
-      ...metricsContext,
-      fallbackReason,
-      rpcDurationMs: rpcResult.durationMs,
-    });
-  }
-
-  const device = input.anonymousDeviceId
-    ? await ensureDeviceIdentity(input.anonymousDeviceId)
-    : null;
-  const posts =
-    (await supabaseRpc<NearbyPostRow[]>("list_nearby_posts", {
-      viewer_latitude: input.location?.latitude ?? null,
-      viewer_longitude: input.location?.longitude ?? null,
-      cursor_distance_meters: cursor?.distanceMeters ?? null,
-      cursor_created_at: cursor?.createdAt ?? null,
-      cursor_post_id: cursor?.postId ?? null,
-      result_limit: limit + 1,
-    })) ?? [];
-  const hasMore = posts.length > limit;
-  const selectedPosts = hasMore ? posts.slice(0, limit) : posts;
-  const postIds = selectedPosts.map((post) => post.id);
-  const [engagementRows, myReactionRows, myReportRows] = await Promise.all([
-    loadEngagementRows(postIds),
-    loadMyAgreeRows(device?.id, postIds),
-    loadMyReportRows(device?.id, postIds),
-  ]);
-  const reportedPostIdSet = new Set(myReportRows.map((row) => row.post_id));
-  const visiblePosts = selectedPosts.filter((post) => !reportedPostIdSet.has(post.id));
-  const visiblePostIdSet = new Set(visiblePosts.map((post) => post.id));
-  const items = buildPostListItems(visiblePosts, {
-    viewerLocation: input.location,
-    engagementRows: engagementRows.filter((row) => visiblePostIdSet.has(row.post_id)),
-    myReactionRows: myReactionRows.filter((row) => visiblePostIdSet.has(row.post_id)),
-  });
-
-  logFeedMetrics("info", "load_posts_list", {
-    ...metricsContext,
-    path: "legacy",
-    itemCount: items.length,
-    hasMore,
-    rpcDurationMs: rpcResult.durationMs,
-    totalDurationMs: getElapsedTimeMs(startedAtMs),
-  });
-
-  return createPostListState({
-    items,
-    nextCursor: getNextNearbyFeedCursor(selectedPosts, hasMore),
+  return loadLegacyNearbyPostListState({
+    preparedLoad,
+    anonymousDeviceId: input.anonymousDeviceId,
+    location: input.location,
     sort,
   });
 }
@@ -742,89 +953,31 @@ export async function loadGlobalPostsListRepository(input: {
     });
   }
 
-  const startedAtMs = getMonotonicTimeMs();
-  const limit = clampFeedLimit(input.limit);
-  const cursor = normalizeGlobalFeedCursor(input.cursor);
-  const metricsContext = buildFeedMetricsContext({
+  const preparedLoad = await prepareFeedLoad({
     scope: "global",
-    cursor,
-    limit,
+    limit: input.limit,
+    cursor: input.cursor,
+    decodeCursor: normalizeGlobalFeedCursor,
   });
-  const rpcResult = await loadPostsFeedRpc({
-    scope: "global",
-    limit,
-    cursor,
+  const rpcState = buildGlobalRpcPostListState({
+    preparedLoad,
   });
-  const rpcPosts = rpcResult.rows;
-  const fallbackReason = getFeedRpcFallbackReason(
-    rpcPosts,
-    rpcResult.fallbackReason,
-  );
 
-  if (rpcPosts && !fallbackReason) {
-    const hasMore = rpcPosts.length > limit;
-    const selectedPosts = hasMore ? rpcPosts.slice(0, limit) : rpcPosts;
-    const items = buildRpcPostListItems(selectedPosts, {
-      myAgree: false,
-      canReport: false,
-      distanceMetersOverride: GLOBAL_FEED_DISTANCE_SENTINEL_METERS,
-    });
+  if (rpcState) {
+    return rpcState;
+  }
 
-    logFeedMetrics("info", "load_posts_list", {
-      ...metricsContext,
-      path: "rpc",
-      itemCount: items.length,
-      hasMore,
-      rpcDurationMs: rpcResult.durationMs,
-      totalDurationMs: getElapsedTimeMs(startedAtMs),
-    });
-
-    return createPostListState({
-      items,
-      nextCursor: getNextNearbyFeedCursor(selectedPosts, hasMore),
-      sort: "latest" as const,
+  if (preparedLoad.fallbackReason) {
+    logFeedFallbackMetrics({
+      metricsContext: preparedLoad.metricsContext,
+      fallbackReason: preparedLoad.fallbackReason,
+      rpcDurationMs: preparedLoad.rpcResult.durationMs,
     });
   }
 
-  if (fallbackReason) {
-    logFeedMetrics("warn", "legacy_fallback", {
-      ...metricsContext,
-      fallbackReason,
-      rpcDurationMs: rpcResult.durationMs,
-    });
-  }
-
-  const legacyCursor = resolveLegacyGlobalCursor(input.cursor, cursor);
-  const cursorFilter = legacyCursor
-    ? `&or=(created_at.lt.${encodeURIComponent(legacyCursor.createdAt)},and(created_at.eq.${encodeURIComponent(legacyCursor.createdAt)},id.gt.${legacyCursor.postId}))`
-    : "";
-  const posts =
-    (await supabaseSelect<PostRow[]>(
-      `posts?select=id,content,administrative_dong_name,created_at,delete_expires_at,latitude,longitude&status=eq.active&order=created_at.desc&order=id.asc&limit=${limit + 1}${cursorFilter}`,
-    )) ?? [];
-  const hasMore = posts.length > limit;
-  const selectedPosts = hasMore ? posts.slice(0, limit) : posts;
-  const postIds = selectedPosts.map((post) => post.id);
-  const engagementRows = await loadEngagementRows(postIds);
-  const items = buildPostListItems(selectedPosts, {
-    engagementRows,
-    canReport: false,
-    distanceMetersOverride: GLOBAL_FEED_DISTANCE_SENTINEL_METERS,
-  });
-
-  logFeedMetrics("info", "load_posts_list", {
-    ...metricsContext,
-    path: "legacy",
-    itemCount: items.length,
-    hasMore,
-    rpcDurationMs: rpcResult.durationMs,
-    totalDurationMs: getElapsedTimeMs(startedAtMs),
-  });
-
-  return createPostListState({
-    items,
-    nextCursor: getNextGlobalFeedCursor(selectedPosts, hasMore),
-    sort: "latest" as const,
+  return loadLegacyGlobalPostListState({
+    rawCursor: input.cursor,
+    preparedLoad,
   });
 }
 
