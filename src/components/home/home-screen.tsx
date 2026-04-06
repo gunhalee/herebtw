@@ -119,6 +119,16 @@ function updateSinglePostItem(
   return items.map((item) => (item.id === targetPostId ? updater(item) : item));
 }
 
+function matchesLoadedPostIds(
+  items: PostListState["items"],
+  loadedPostIds: string[],
+) {
+  return (
+    items.length === loadedPostIds.length &&
+    items.every((item, index) => item.id === loadedPostIds[index])
+  );
+}
+
 async function resolveAdministrativeLocation(location: PostLocation) {
   const response = await fetch("/api/location/resolve", {
     method: "POST",
@@ -147,6 +157,8 @@ export function HomeScreen({
   const [postListState, setPostListState] = useState(initialPostListState);
   const [pendingFeedSnapshot, setPendingFeedSnapshot] =
     useState<PendingFeedSnapshot | null>(null);
+  const [pendingAppliedScrollTargetPostId, setPendingAppliedScrollTargetPostId] =
+    useState<string | null>(null);
   const [composePanelOpen, setComposePanelOpen] = useState(false);
   const [composePermissionDialogOpen, setComposePermissionDialogOpen] =
     useState(false);
@@ -197,6 +209,31 @@ export function HomeScreen({
   useEffect(() => {
     feedLocationRef.current = feedLocation;
   }, [feedLocation]);
+
+  useEffect(() => {
+    if (typeof document === "undefined") {
+      return;
+    }
+
+    const root = document.documentElement;
+    const body = document.body;
+    const previousRootOverflow = root.style.overflow;
+    const previousRootOverscrollBehavior = root.style.overscrollBehavior;
+    const previousBodyOverflow = body.style.overflow;
+    const previousBodyOverscrollBehavior = body.style.overscrollBehavior;
+
+    root.style.overflow = "hidden";
+    root.style.overscrollBehavior = "none";
+    body.style.overflow = "hidden";
+    body.style.overscrollBehavior = "none";
+
+    return () => {
+      root.style.overflow = previousRootOverflow;
+      root.style.overscrollBehavior = previousRootOverscrollBehavior;
+      body.style.overflow = previousBodyOverflow;
+      body.style.overscrollBehavior = previousBodyOverscrollBehavior;
+    };
+  }, []);
 
   function applyAdministrativeLocationState(
     resolvedLocation: AdministrativeLocationSnapshot,
@@ -605,6 +642,10 @@ export function HomeScreen({
           return;
         }
 
+        if (!matchesLoadedPostIds(postListStateRef.current.items, loadedPostIds)) {
+          return;
+        }
+
         setPostListState((current) => ({
           ...current,
           items: patchPostListItems(current.items, data.items),
@@ -770,12 +811,6 @@ export function HomeScreen({
     }
 
     const currentState = postListStateRef.current;
-
-    if (currentState.items.length !== pendingFeedSnapshot.requestedItemCount) {
-      setPendingFeedSnapshot(null);
-      return;
-    }
-
     const currentPostIdSet = new Set(currentState.items.map((item) => item.id));
     const appendedNewItems = pendingFeedSnapshot.items.filter(
       (item) => !currentPostIdSet.has(item.id),
@@ -784,25 +819,23 @@ export function HomeScreen({
       ...patchPostListItems(currentState.items, pendingFeedSnapshot.items),
       ...appendedNewItems,
     ];
-
-    setPostListState((current) => {
-      if (current.items.length !== pendingFeedSnapshot.requestedItemCount) {
-        return current;
-      }
-
-      return {
-        ...current,
-        items: mergedItems,
-        nextCursor: current.nextCursor,
-        empty: mergedItems.length === 0,
-        errorMessage: null,
-        sort: "distance",
-      };
-    });
-    writeCachedNearbyPostList(feedLocation, {
+    const firstNewPostId = appendedNewItems[0]?.id ?? null;
+    const nextState: PostListState = {
+      ...currentState,
       items: mergedItems,
       nextCursor: currentState.nextCursor,
+      empty: mergedItems.length === 0,
+      errorMessage: null,
+      sort: "distance",
+    };
+
+    postListStateRef.current = nextState;
+    setPostListState(nextState);
+    writeCachedNearbyPostList(feedLocation, {
+      items: mergedItems,
+      nextCursor: nextState.nextCursor,
     });
+    setPendingAppliedScrollTargetPostId(firstNewPostId);
     setPendingFeedSnapshot(null);
   }
 
@@ -1068,8 +1101,9 @@ export function HomeScreen({
       style={{
         background: "#ffffff",
         height: "100dvh",
+        inset: 0,
         overflow: "hidden",
-        position: "relative",
+        position: "fixed",
         width: "100%",
       }}
     >
@@ -1088,6 +1122,8 @@ export function HomeScreen({
         onOpenMenu={handleOpenMenu}
         obscurePosts={obscureGlobalFallbackList}
         onSelectReport={handleSelectReport}
+        onScrollTargetApplied={() => setPendingAppliedScrollTargetPostId(null)}
+        scrollTargetPostId={pendingAppliedScrollTargetPostId}
         onToggleAgree={handleToggleAgree}
         pendingNewItemsCount={pendingFeedSnapshot?.newItemsCount ?? 0}
         reportSubmitting={reportSubmitting}

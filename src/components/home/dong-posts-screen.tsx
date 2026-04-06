@@ -302,6 +302,7 @@ export type DongPostsScreenProps = {
   currentDongName: string;
   animateComposeDongPlaceholder?: boolean;
   interactionLocked?: boolean;
+  scrollTargetPostId?: string | null;
   state: PostListState;
   runtimeNotice?: string | null;
   pendingNewItemsCount?: number;
@@ -312,6 +313,7 @@ export type DongPostsScreenProps = {
   onCompose?: () => void;
   onApplyPendingUpdates?: () => void;
   onLoadMore?: () => void;
+  onScrollTargetApplied?: () => void;
   onToggleAgree?: (postId?: string) => void;
   onOpenMenu?: (postId: string) => void;
   onCloseMenu?: () => void;
@@ -324,6 +326,7 @@ export function DongPostsScreen({
   currentDongName,
   animateComposeDongPlaceholder = false,
   interactionLocked = false,
+  scrollTargetPostId,
   state,
   runtimeNotice,
   pendingNewItemsCount = 0,
@@ -334,6 +337,7 @@ export function DongPostsScreen({
   onCompose,
   onApplyPendingUpdates,
   onLoadMore,
+  onScrollTargetApplied,
   onToggleAgree,
   onOpenMenu,
   onCloseMenu,
@@ -343,6 +347,7 @@ export function DongPostsScreen({
 }: DongPostsScreenProps) {
   const activeReportPost =
     state.items.find((item) => item.id === activeReportPostId) ?? null;
+  const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const shouldObscurePosts =
     obscurePosts && !state.loading && !state.errorMessage && !state.empty;
   const shouldShowPendingUpdatesButton =
@@ -350,6 +355,46 @@ export function DongPostsScreen({
   const composeCta = homeScreenCopy.composeCta(currentDongName);
   const shouldAnimatePlaceholderDong =
     animateComposeDongPlaceholder || composeCta.location === PLACEHOLDER_DONG_LABEL;
+
+  useEffect(() => {
+    if (!scrollTargetPostId || !scrollContainerRef.current) {
+      return;
+    }
+
+    let frameId = 0;
+
+    const scrollToTarget = () => {
+      const container = scrollContainerRef.current;
+
+      if (!container) {
+        return;
+      }
+
+      const targetElement = container.querySelector<HTMLElement>(
+        `[data-post-id="${scrollTargetPostId}"]`,
+      );
+
+      if (!targetElement) {
+        return;
+      }
+
+      const containerTop = container.getBoundingClientRect().top;
+      const targetTop = targetElement.getBoundingClientRect().top;
+      const nextScrollTop = container.scrollTop + (targetTop - containerTop) - 16;
+
+      container.scrollTo({
+        top: Math.max(0, nextScrollTop),
+        behavior: "smooth",
+      });
+      onScrollTargetApplied?.();
+    };
+
+    frameId = window.requestAnimationFrame(scrollToTarget);
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+    };
+  }, [onScrollTargetApplied, scrollTargetPostId]);
 
   return (
     <section
@@ -538,6 +583,7 @@ export function DongPostsScreen({
         }}
       >
         <div
+          ref={scrollContainerRef}
           style={{
             background: uiColors.surface,
             display: "flex",
@@ -545,7 +591,7 @@ export function DongPostsScreen({
             gap: uiSpacing.md,
             minHeight: 0,
             overflowY: interactionLocked ? "hidden" : "auto",
-            overscrollBehavior: interactionLocked ? "none" : "auto",
+            overscrollBehaviorY: interactionLocked ? "none" : "contain",
             padding: `${uiSpacing.lg} ${uiSpacing.pageX} ${
               shouldShowPendingUpdatesButton
                 ? "calc(96px + env(safe-area-inset-bottom, 0px))"
@@ -553,6 +599,7 @@ export function DongPostsScreen({
             }`,
             position: "relative",
             touchAction: interactionLocked ? "none" : "pan-y",
+            WebkitOverflowScrolling: "touch",
           }}
         >
           {activeMenuPostId ? (
@@ -601,6 +648,7 @@ export function DongPostsScreen({
                 >
                   {state.items.map((item, index) => (
                     <div
+                      data-post-id={item.id}
                       key={item.id}
                       className={
                         shouldObscurePosts ? "global-feed-preview__card" : undefined
