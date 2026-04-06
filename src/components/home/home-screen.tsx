@@ -1249,7 +1249,7 @@ export function HomeScreen({
     const postId = activeReportPostId;
     const targetItem = postListState.items.find((item) => item.id === postId);
 
-    if (!targetItem?.canReport) {
+    if (!targetItem) {
       return;
     }
 

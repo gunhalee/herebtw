@@ -83,9 +83,7 @@ export function PostDetailSheet({
 
   const reportPostId = state.postId;
   const handleSelectReport =
-    reportPostId && state.canReport
-      ? () => onSelectReport?.(reportPostId)
-      : undefined;
+    reportPostId ? () => onSelectReport?.(reportPostId) : undefined;
 
   if (!state.open) {
     return null;
@@ -393,7 +391,7 @@ export function PostDetailSheet({
           onToggle={onToggleAgree}
         />
         <ReportButton
-          disabled={!state.canReport}
+          disabled={!handleSelectReport}
           onClick={handleSelectReport}
         />
         <DeletePostButton

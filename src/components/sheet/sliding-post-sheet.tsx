@@ -180,9 +180,7 @@ export function SlidingPostSheet({
   const pseudoReadCount = Math.max(12, detailState.agreeCount * 9 + 23);
   const reportPostId = detailState.postId;
   const handleSelectReport =
-    reportPostId && detailState.canReport
-      ? () => onSelectReport?.(reportPostId)
-      : undefined;
+    reportPostId ? () => onSelectReport?.(reportPostId) : undefined;
 
   return (
     <section
@@ -437,7 +435,7 @@ export function SlidingPostSheet({
                 onToggle={onToggleAgree}
               />
               <ReportButton
-                disabled={!detailState.canReport}
+                disabled={!handleSelectReport}
                 onClick={handleSelectReport}
               />
               <DeletePostButton

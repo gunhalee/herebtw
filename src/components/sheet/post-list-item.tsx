@@ -145,14 +145,13 @@ export function PostListItem({
 
             <button
               aria-label="신고 메뉴 열기"
-              disabled={!canReport}
               onClick={() => (isMenuOpen ? onCloseMenu?.() : onOpenMenu?.(id))}
               style={{
                 appearance: "none",
                 background: "transparent",
                 border: "none",
-                color: canReport ? uiColors.textStrong : "#c1c7d0",
-                cursor: canReport ? "pointer" : "default",
+                color: uiColors.textStrong,
+                cursor: "pointer",
                 flexShrink: 0,
                 fontSize: "16px",
                 fontWeight: 500,
@@ -200,14 +199,13 @@ export function PostListItem({
               }}
             >
               <button
-                disabled={!canReport}
                 onClick={() => onSelectReport?.(id)}
                 style={{
                   appearance: "none",
                   background: "transparent",
                   border: "none",
-                  color: canReport ? uiColors.textStrong : "#c1c7d0",
-                  cursor: canReport ? "pointer" : "default",
+                  color: uiColors.textStrong,
+                  cursor: "pointer",
                   display: "block",
                   fontSize: "12px",
                   fontWeight: 500,
