@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
 import { DongPostsScreen } from "./dong-posts-screen";
+import { PostComposeExperience } from "../post/post-compose-experience";
 import {
   ensureRegisteredBrowserDevice,
   getOrCreateBrowserAnonymousDeviceId,
@@ -19,6 +19,12 @@ import {
   readLatestCachedNearbyPostList,
   writeCachedNearbyPostList,
 } from "../../lib/posts/browser-nearby-post-cache";
+import {
+  uiColors,
+  uiRadius,
+  uiSpacing,
+  uiTypography,
+} from "../../lib/ui/tokens";
 import type { ApiResponse } from "../../types/api";
 import type { AppShellState } from "../../types/device";
 import type { PostListState, PostLocation } from "../../types/post";
@@ -137,11 +143,13 @@ export function HomeScreen({
   initialAppShellState,
   initialPostListState,
 }: HomeScreenProps) {
-  const router = useRouter();
   const [appShellState, setAppShellState] = useState(initialAppShellState);
   const [postListState, setPostListState] = useState(initialPostListState);
   const [pendingFeedSnapshot, setPendingFeedSnapshot] =
     useState<PendingFeedSnapshot | null>(null);
+  const [composePanelOpen, setComposePanelOpen] = useState(false);
+  const [composePermissionDialogOpen, setComposePermissionDialogOpen] =
+    useState(false);
   const [activeMenuPostId, setActiveMenuPostId] = useState<string | null>(null);
   const [activeReportPostId, setActiveReportPostId] = useState<string | null>(null);
   const [reportSubmitting, setReportSubmitting] = useState(false);
@@ -153,6 +161,7 @@ export function HomeScreen({
       ? "global"
       : "nearby",
   );
+  const isMountedRef = useRef(true);
   const appShellStateRef = useRef(appShellState);
   const postListStateRef = useRef(postListState);
   const feedLocationRef = useRef(feedLocation);
@@ -176,12 +185,117 @@ export function HomeScreen({
   }, [appShellState]);
 
   useEffect(() => {
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+
+  useEffect(() => {
     postListStateRef.current = postListState;
   }, [postListState]);
 
   useEffect(() => {
     feedLocationRef.current = feedLocation;
   }, [feedLocation]);
+
+  function applyAdministrativeLocationState(
+    resolvedLocation: AdministrativeLocationSnapshot,
+    options?: {
+      final?: boolean;
+    },
+  ) {
+    if (!isMountedRef.current) {
+      return;
+    }
+
+    setAppShellState((current) => ({
+      ...current,
+      permissionMode: "granted",
+      readOnlyMode: false,
+      selectedDongCode: resolvedLocation.administrativeDongCode,
+      selectedDongName: resolvedLocation.administrativeDongName,
+    }));
+
+    if (options?.final) {
+      setLocationResolving(false);
+    }
+  }
+
+  function startAdministrativeLocationResolution(location: PostLocation) {
+    void resolveAdministrativeLocation(location)
+      .then((resolvedLocation) => {
+        if (!isMountedRef.current) {
+          return;
+        }
+
+        if (!isDomesticAdministrativeLocation(resolvedLocation)) {
+          setAppShellState((current) => ({
+            ...current,
+            selectedDongCode: null,
+            selectedDongName: null,
+          }));
+          setLocationResolving(false);
+          return;
+        }
+
+        applyAdministrativeLocationState(resolvedLocation, {
+          final: true,
+        });
+        writeCachedAdministrativeLocation(
+          location,
+          resolvedLocation,
+        );
+      })
+      .catch(() => {
+        if (!isMountedRef.current) {
+          return;
+        }
+
+        setLocationResolving(false);
+      });
+  }
+
+  async function hydrateHomeLocationFromCoordinates(location: PostLocation) {
+    if (!isMountedRef.current) {
+      return;
+    }
+
+    setFeedLocation(location);
+    setAppShellState((current) => ({
+      ...current,
+      permissionMode: "granted",
+      readOnlyMode: false,
+      selectedDongCode: null,
+      selectedDongName: null,
+    }));
+    setLocationResolving(true);
+
+    const cachedAdministrativeLocation =
+      readCachedAdministrativeLocation(location);
+
+    if (cachedAdministrativeLocation) {
+      applyAdministrativeLocationState(cachedAdministrativeLocation);
+    }
+
+    const cachedNearbyPostList = readCachedNearbyPostList(location);
+
+    if (cachedNearbyPostList) {
+      setPendingFeedSnapshot(null);
+      setFeedSortMode("nearby");
+      setPostListState((current) => ({
+        ...current,
+        items: cachedNearbyPostList.items,
+        nextCursor: cachedNearbyPostList.nextCursor,
+        loading: false,
+        loadingMore: false,
+        empty: cachedNearbyPostList.items.length === 0,
+        errorMessage: null,
+        sort: "distance",
+      }));
+    }
+
+    startAdministrativeLocationResolution(location);
+  }
 
   async function fetchNearbyPostsList(
     location: PostLocation,
@@ -305,29 +419,6 @@ export function HomeScreen({
 
         }
 
-        function applyAdministrativeLocation(
-          resolvedLocation: AdministrativeLocationSnapshot,
-          options?: {
-            final?: boolean;
-          },
-        ) {
-          if (cancelled) {
-            return;
-          }
-
-          setAppShellState((current) => ({
-            ...current,
-            permissionMode: "granted",
-            readOnlyMode: false,
-            selectedDongCode: resolvedLocation.administrativeDongCode,
-            selectedDongName: resolvedLocation.administrativeDongName,
-          }));
-
-          if (options?.final) {
-            setLocationResolving(false);
-          }
-        }
-
         let resolvedCoordinates: PostLocation | undefined;
 
         try {
@@ -351,7 +442,7 @@ export function HomeScreen({
             readCachedAdministrativeLocation(resolvedCoordinates);
 
           if (cachedAdministrativeLocation) {
-            applyAdministrativeLocation(cachedAdministrativeLocation);
+            applyAdministrativeLocationState(cachedAdministrativeLocation);
           }
 
           const cachedNearbyPostList = readCachedNearbyPostList(resolvedCoordinates);
@@ -371,31 +462,7 @@ export function HomeScreen({
             }));
           }
 
-          void resolveAdministrativeLocation(resolvedCoordinates)
-            .then((resolvedLocation) => {
-              if (!isDomesticAdministrativeLocation(resolvedLocation)) {
-                setAppShellState((current) => ({
-                  ...current,
-                  selectedDongCode: null,
-                  selectedDongName: null,
-                }));
-                setLocationResolving(false);
-                return;
-              }
-
-              applyAdministrativeLocation(resolvedLocation, {
-                final: true,
-              });
-              writeCachedAdministrativeLocation(
-                resolvedCoordinates!,
-                resolvedLocation,
-              );
-            })
-            .catch(() => {
-              if (!cancelled) {
-                setLocationResolving(false);
-              }
-            });
+          startAdministrativeLocationResolution(resolvedCoordinates);
         } catch (error) {
           if (!cancelled) {
             const permissionMode = getPermissionMode(error);
@@ -619,8 +686,82 @@ export function HomeScreen({
     return anonymousDeviceId;
   }
 
-  function handleCompose() {
-    router.push("/write");
+  async function handleCompose() {
+    setActiveMenuPostId(null);
+    setActiveReportPostId(null);
+    setComposePermissionDialogOpen(false);
+
+    if (!feedLocationRef.current) {
+      try {
+        const resolvedCoordinates = await getCurrentBrowserCoordinates();
+        await hydrateHomeLocationFromCoordinates(resolvedCoordinates);
+      } catch (error) {
+        const permissionMode = getPermissionMode(error);
+
+        if (isMountedRef.current) {
+          setFeedLocation(null);
+          setLocationResolving(false);
+          setAppShellState((current) => ({
+            ...current,
+            permissionMode,
+            readOnlyMode: permissionMode === "denied",
+            selectedDongCode: null,
+            selectedDongName: null,
+          }));
+          setComposePermissionDialogOpen(true);
+        }
+
+        return;
+      }
+    }
+
+    if (isMountedRef.current) {
+      setComposePanelOpen(true);
+    }
+  }
+
+  function handleCloseComposePanel() {
+    setComposePanelOpen(false);
+  }
+
+  function handleCloseComposePermissionDialog() {
+    setComposePermissionDialogOpen(false);
+  }
+
+  async function handleComposeSuccess() {
+    setComposePanelOpen(false);
+    setPendingFeedSnapshot(null);
+
+    if (dataSourceMode !== "supabase") {
+      return;
+    }
+
+    try {
+      const latestLocation = feedLocationRef.current;
+      const data = latestLocation
+        ? await fetchNearbyPostsList(latestLocation)
+        : await fetchGlobalPostsList();
+
+      setFeedSortMode(latestLocation ? "nearby" : "global");
+      setPostListState((current) => ({
+        ...current,
+        items: data.items,
+        nextCursor: data.nextCursor,
+        loading: false,
+        loadingMore: false,
+        empty: data.items.length === 0,
+        errorMessage: null,
+        sort: latestLocation ? "distance" : "latest",
+      }));
+    } catch (error) {
+      setPostListState((current) => ({
+        ...current,
+        errorMessage:
+          error instanceof Error
+            ? error.message
+            : "등록 후 목록을 새로고침하지 못했습니다.",
+      }));
+    }
   }
 
   function handleApplyPendingFeedSnapshot() {
@@ -952,6 +1093,100 @@ export function HomeScreen({
         runtimeNotice={runtimeNotice}
         state={postListState}
       />
+      {composePanelOpen ? (
+        <PostComposeExperience
+          dataSourceMode={dataSourceMode}
+          onDismiss={handleCloseComposePanel}
+          onSuccess={handleComposeSuccess}
+          presentation="sheet"
+        />
+      ) : null}
+      {composePermissionDialogOpen ? (
+        <div
+          aria-modal="true"
+          role="dialog"
+          style={{
+            alignItems: "center",
+            background: "rgba(17, 24, 39, 0.28)",
+            display: "flex",
+            inset: 0,
+            justifyContent: "center",
+            padding: uiSpacing.pageX,
+            position: "absolute",
+            zIndex: 14,
+          }}
+        >
+          <section
+            style={{
+              background: "#fffdfa",
+              borderRadius: uiRadius.lg,
+              boxShadow: "0 18px 38px rgba(17, 24, 39, 0.18)",
+              display: "flex",
+              flexDirection: "column",
+              gap: uiSpacing.xl,
+              maxWidth: "320px",
+              padding: uiSpacing.xl,
+              width: "100%",
+            }}
+          >
+            <p
+              style={{
+                color: uiColors.textStrong,
+                fontSize: "14px",
+                fontWeight: 600,
+                lineHeight: 1.6,
+                margin: 0,
+                textAlign: "center",
+              }}
+            >
+              글을 작성하려면 권한 허용이 필요해요.
+            </p>
+            <div
+              style={{
+                display: "grid",
+                gap: uiSpacing.sm,
+                gridTemplateColumns: "1fr 1fr",
+              }}
+            >
+              <button
+                onClick={handleCloseComposePermissionDialog}
+                style={{
+                  background: "#ffffff",
+                  border: `1px solid ${uiColors.border}`,
+                  borderRadius: uiRadius.pill,
+                  color: uiColors.textStrong,
+                  cursor: "pointer",
+                  fontSize: uiTypography.body.fontSize,
+                  fontWeight: 600,
+                  padding: `${uiSpacing.sm} ${uiSpacing.lg}`,
+                }}
+                type="button"
+              >
+                닫기
+              </button>
+              <button
+                onClick={() => {
+                  setComposePermissionDialogOpen(false);
+                  void handleCompose();
+                }}
+                style={{
+                  background: "#ffffff",
+                  border: `1px solid ${uiColors.border}`,
+                  borderRadius: uiRadius.pill,
+                  color: uiColors.textStrong,
+                  cursor: "pointer",
+                  fontSize: uiTypography.body.fontSize,
+                  fontWeight: 600,
+                  padding: `${uiSpacing.sm} ${uiSpacing.lg}`,
+                }}
+                type="button"
+              >
+                재시도
+              </button>
+            </div>
+          </section>
+        </div>
+      ) : null}
     </div>
   );
 }

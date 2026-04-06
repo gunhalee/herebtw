@@ -366,7 +366,7 @@ export function DongPostsScreen({
           display: "flex",
           flexDirection: "column",
           gap: uiSpacing.md,
-          padding: `${uiSpacing.pageY} ${uiSpacing.pageX} ${uiSpacing.xxl}`,
+          padding: `calc(env(safe-area-inset-top, 0px) + ${uiSpacing.pageY}) ${uiSpacing.pageX} ${uiSpacing.xxl}`,
           position: "relative",
           zIndex: 2,
         }}

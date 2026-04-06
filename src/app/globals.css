@@ -6,13 +6,13 @@
 
 html,
 body {
+  background: #f7f4ec;
   height: 100%;
   margin: 0;
   padding: 0;
 }
 
 body {
-  background: #f3f4f6;
   color: #111827;
   font-family: "Segoe UI", "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
   overflow-x: hidden;
@@ -268,6 +268,29 @@ input {
   transform-origin: 50% 100%;
 }
 
+.compose-sheet-overlay {
+  align-items: flex-end;
+  animation: compose-sheet-fade-in 180ms ease-out both;
+  display: flex;
+  inset: 0;
+  justify-content: center;
+  position: absolute;
+  z-index: 12;
+}
+
+.compose-sheet-overlay__backdrop {
+  appearance: none;
+  background: rgba(17, 24, 39, 0.28);
+  border: none;
+  inset: 0;
+  padding: 0;
+  position: absolute;
+}
+
+.compose-sheet-panel {
+  animation: compose-sheet-rise 280ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
 @keyframes global-feed-preview-drop {
   0% {
     opacity: 0.18;
@@ -309,13 +332,37 @@ input {
   }
 }
 
+@keyframes compose-sheet-fade-in {
+  0% {
+    opacity: 0;
+  }
+
+  100% {
+    opacity: 1;
+  }
+}
+
+@keyframes compose-sheet-rise {
+  0% {
+    opacity: 0;
+    transform: translateY(48px);
+  }
+
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .global-feed-preview[data-obscured="true"] .global-feed-preview__card {
     animation: none;
   }
 
   .compose-dong-flashcard__card--leaving,
-  .compose-dong-flashcard__card--entering {
+  .compose-dong-flashcard__card--entering,
+  .compose-sheet-overlay,
+  .compose-sheet-panel {
     animation: none;
   }
 }
