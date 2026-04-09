@@ -1,6 +1,5 @@
-import Image from "next/image";
-import penWritingImage from "../pen_writing.png";
 import { uiColors, uiRadius, uiSpacing } from "../../lib/ui/tokens";
+import { VoteIcon } from "../vote-icon";
 
 type FloatingComposeButtonProps = {
   elevated?: boolean;
@@ -58,17 +57,11 @@ export function FloatingComposeButton({
       >
         {label}
       </span>
-      <Image
-        alt=""
-        aria-hidden="true"
-        src={penWritingImage}
-        width={24}
-        height={24}
+      <VoteIcon
+        size={24}
         style={{
-          filter:
-            disabled
-              ? "grayscale(0.18) opacity(0.72)"
-              : "drop-shadow(0 3px 8px rgba(17, 24, 39, 0.16))",
+          color: disabled ? "#9ca3af" : uiColors.textStrong,
+          filter: disabled ? "none" : "drop-shadow(0 3px 8px rgba(17, 24, 39, 0.16))",
           position: "relative",
           zIndex: 1,
         }}
