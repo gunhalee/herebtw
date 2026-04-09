@@ -114,7 +114,6 @@ export function DongPostsHeader({
         style={{
           alignItems: "center",
           background: "#f8f2e8",
-          border: "1px solid #e7dccd",
           borderRadius: 0,
           color: "#000000",
           display: "flex",
