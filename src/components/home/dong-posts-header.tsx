@@ -116,8 +116,6 @@ export function DongPostsHeader({
           background: "linear-gradient(180deg, #fffdfa 0%, #f8f2e8 100%)",
           border: "1px solid #e7dccd",
           borderRadius: uiRadius.pill,
-          boxShadow:
-            "0 14px 28px rgba(116, 94, 62, 0.14), inset 0 1px 0 rgba(255, 255, 255, 0.9)",
           color: uiColors.textStrong,
           display: "flex",
           fontSize: "16px",

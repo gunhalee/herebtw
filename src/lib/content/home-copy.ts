@@ -19,9 +19,9 @@ export const homeScreenCopy = {
   emptyDescription: undefined,
   composeCta(currentDongName: string) {
     return {
-      prefix: "여기 ",
+      prefix: "후보자님 여기 ",
       location: getAdministrativeDongLabel(currentDongName),
-      suffix: "인데요",
+      suffix: " 인데요",
     };
   },
 } as const;

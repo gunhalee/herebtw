@@ -14,10 +14,11 @@ export function FloatingComposeButton({
   onCompose,
 }: FloatingComposeButtonProps) {
   const baseBottomOffset = elevated ? "92px" : "20px";
+  const label = "\uAE00 \uB0A8\uAE30\uAE30";
 
   return (
     <button
-      aria-label="글 작성"
+      aria-label={label}
       disabled={disabled}
       onClick={onCompose}
       style={{
@@ -32,16 +33,31 @@ export function FloatingComposeButton({
           "0 18px 34px rgba(116, 94, 62, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.92)",
         cursor: disabled ? "default" : "pointer",
         display: "inline-flex",
+        gap: uiSpacing.sm,
         height: "60px",
         justifyContent: "center",
         opacity: disabled ? 0.6 : 1,
+        padding: `0 ${uiSpacing.lg} 0 ${uiSpacing.xl}`,
         position: "absolute",
         right: uiSpacing.pageX,
-        width: "60px",
         zIndex: 12,
       }}
       type="button"
     >
+      <span
+        style={{
+          color: uiColors.textStrong,
+          fontSize: "15px",
+          fontWeight: 700,
+          letterSpacing: "-0.02em",
+          lineHeight: 1,
+          position: "relative",
+          whiteSpace: "nowrap",
+          zIndex: 1,
+        }}
+      >
+        {label}
+      </span>
       <Image
         alt=""
         aria-hidden="true"
@@ -53,6 +69,8 @@ export function FloatingComposeButton({
             disabled
               ? "grayscale(0.18) opacity(0.72)"
               : "drop-shadow(0 3px 8px rgba(17, 24, 39, 0.16))",
+          position: "relative",
+          zIndex: 1,
         }}
       />
       <span
