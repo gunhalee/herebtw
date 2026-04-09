@@ -8,6 +8,11 @@ const geist = Geist({ subsets: ["latin"], variable: "--font-sans" });
 export const metadata = {
   title: "여기 근데",
   description: "한마디 할게요",
+  icons: {
+    icon: "/icons/vote.png",
+    shortcut: "/icons/vote.png",
+    apple: "/icons/vote.png",
+  },
 };
 
 export const viewport = {
