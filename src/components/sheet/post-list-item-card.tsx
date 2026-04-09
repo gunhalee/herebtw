@@ -35,9 +35,7 @@ export function PostListItemCard({
 }: PostListItemCardProps) {
   const displayAdministrativeDongName =
     formatAdministrativeAreaNameForHomeDisplay(administrativeDongName);
-  const agreeButtonBackground = myAgree
-    ? "#eef0f3"
-    : "rgba(255, 255, 255, 0.96)";
+  const agreeButtonBackground = "rgba(255, 255, 255, 0.96)";
   const agreeButtonBorder = myAgree ? "#d3d7dd" : uiColors.border;
 
   return (
