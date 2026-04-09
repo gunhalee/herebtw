@@ -19,7 +19,7 @@ export const homeScreenCopy = {
   emptyDescription: undefined,
   composeCta(currentDongName: string) {
     return {
-      prefix: "후보자님 여기 ",
+      prefix: "후보님 여기 ",
       location: getAdministrativeDongLabel(currentDongName),
       suffix: " 인데요",
     };
