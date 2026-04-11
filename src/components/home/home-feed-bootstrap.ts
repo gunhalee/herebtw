@@ -52,11 +52,17 @@ export async function bootstrapHomeFeed({
     return;
   }
 
-  setAppShellState((current) => ({
-    ...current,
-    anonymousDeviceId,
-    deviceReady: true,
-  }));
+  setAppShellState((current) => {
+    if (current.anonymousDeviceId === anonymousDeviceId && current.deviceReady) {
+      return current;
+    }
+
+    return {
+      ...current,
+      anonymousDeviceId,
+      deviceReady: true,
+    };
+  });
 
   void ensureRegisteredBrowserDevice().catch(() => undefined);
 

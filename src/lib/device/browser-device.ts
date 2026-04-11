@@ -13,6 +13,8 @@ type RegisterDeviceResponse = {
   };
 };
 
+let registrationInflightPromise: Promise<string> | null = null;
+
 function generateAnonymousDeviceId() {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
     return `anon_${crypto.randomUUID()}`;
@@ -52,6 +54,18 @@ function hasFreshDeviceRegistration() {
   return Number.isFinite(parsed) && Date.now() - parsed < DEVICE_REGISTER_TTL_MS;
 }
 
+/**
+ * Read-only: returns the existing device ID from localStorage without
+ * generating a new one. Safe to call at any point after hydration.
+ */
+export function readBrowserAnonymousDeviceId(): string | null {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  return window.localStorage.getItem(ANONYMOUS_DEVICE_STORAGE_KEY) ?? null;
+}
+
 export function getOrCreateBrowserAnonymousDeviceId() {
   if (typeof window === "undefined") {
     return null;
@@ -72,6 +86,24 @@ export function getOrCreateBrowserAnonymousDeviceId() {
   return nextAnonymousDeviceId;
 }
 
+async function performDeviceRegistration(anonymousDeviceId: string): Promise<string> {
+  try {
+    const data = await fetchClientApiData<RegisterDeviceResponse>({
+      errorMessage: "디바이스 등록에 실패했습니다.",
+      init: createJsonPostRequestInit({
+        anonymousDeviceId,
+      }),
+      path: "/api/device/register",
+      timeoutErrorMessage: "기기 등록이 지연되고 있어요. 다시 시도해주세요.",
+    });
+    persistAnonymousDeviceId(data.device.anonymousDeviceId);
+    markBrowserDeviceRegistered();
+    return data.device.anonymousDeviceId;
+  } catch {
+    return anonymousDeviceId;
+  }
+}
+
 export async function ensureRegisteredBrowserDevice(options?: { force?: boolean }) {
   const anonymousDeviceId = getOrCreateBrowserAnonymousDeviceId();
 
@@ -87,16 +119,15 @@ export async function ensureRegisteredBrowserDevice(options?: { force?: boolean 
     return anonymousDeviceId;
   }
 
-  const data = await fetchClientApiData<RegisterDeviceResponse>({
-    errorMessage: "디바이스 등록에 실패했습니다.",
-    init: createJsonPostRequestInit({
-      anonymousDeviceId,
-    }),
-    path: "/api/device/register",
-    timeoutErrorMessage: "기기 등록이 지연되고 있어요. 다시 시도해주세요.",
-  });
-  persistAnonymousDeviceId(data.device.anonymousDeviceId);
-  markBrowserDeviceRegistered();
+  if (registrationInflightPromise) {
+    return registrationInflightPromise;
+  }
 
-  return data.device.anonymousDeviceId;
+  registrationInflightPromise = performDeviceRegistration(anonymousDeviceId).finally(
+    () => {
+      registrationInflightPromise = null;
+    },
+  );
+
+  return registrationInflightPromise;
 }

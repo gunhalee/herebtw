@@ -2,6 +2,7 @@
 
 import {
   useEffect,
+  useRef,
   type Dispatch,
   type MutableRefObject,
   type SetStateAction,
@@ -52,19 +53,31 @@ export function useHomeFeedLifecycle({
   setPostListState,
   setPendingFeedSnapshot,
 }: UseHomeFeedLifecycleParams) {
+  const bootstrapCompletedRef = useRef(false);
+  const initialPostListStateRef = useRef(initialPostListState);
+  const hasInitialGlobalFeedRef = useRef(hasInitialGlobalFeed);
+
   useEffect(() => {
+    if (bootstrapCompletedRef.current) {
+      return;
+    }
+
     let cancelled = false;
 
     void bootstrapHomeFeed({
       dataSourceMode,
-      hasInitialGlobalFeed,
-      initialPostListState,
+      hasInitialGlobalFeed: hasInitialGlobalFeedRef.current,
+      initialPostListState: initialPostListStateRef.current,
       isCancelled: () => cancelled,
       setAppShellState,
       setFeedSortMode,
       setPostListState,
       setPendingFeedSnapshot,
       applyCachedNearbyPostListState,
+    }).then(() => {
+      if (!cancelled) {
+        bootstrapCompletedRef.current = true;
+      }
     }).catch((error) => {
       if (!cancelled) {
         applyBootstrapError(setPostListState, error);
@@ -74,7 +87,7 @@ export function useHomeFeedLifecycle({
     return () => {
       cancelled = true;
     };
-  }, [dataSourceMode, hasInitialGlobalFeed, initialPostListState]);
+  }, [dataSourceMode]);
 
   useEffect(() => {
     if (feedSortMode !== "nearby") {

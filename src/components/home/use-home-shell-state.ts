@@ -10,7 +10,10 @@ import {
   buildReadyPostListState,
   type PendingFeedSnapshot,
 } from "./home-feed-state";
-import { ensureRegisteredBrowserDevice } from "../../lib/device/browser-device";
+import {
+  ensureRegisteredBrowserDevice,
+  readBrowserAnonymousDeviceId,
+} from "../../lib/device/browser-device";
 import {
   useBrowserLocationSession,
   type BrowserLocationSessionState,
@@ -128,6 +131,20 @@ export function useHomeShellState({
 
     if (existingAnonymousDeviceId) {
       return existingAnonymousDeviceId;
+    }
+
+    const localDeviceId = readBrowserAnonymousDeviceId();
+
+    if (localDeviceId) {
+      setAppShellState((current) => ({
+        ...current,
+        anonymousDeviceId: localDeviceId,
+        deviceReady: true,
+      }));
+
+      void ensureRegisteredBrowserDevice().catch(() => undefined);
+
+      return localDeviceId;
     }
 
     const anonymousDeviceId = await ensureRegisteredBrowserDevice();
